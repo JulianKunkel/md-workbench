@@ -59,6 +59,10 @@ int p_files_creation_errors = 0;
 int c_files_deleted = 0;
 int c_files_deletion_error = 0;
 
+int b_file_created = 0;
+int b_file_accessed = 0;
+int b_file_creation_errors = 0;
+int b_file_access_errors = 0;
 
 #define FILENAME_MAX 4096
 
@@ -120,9 +124,69 @@ error:
   free(buf);
 }
 
+/* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
 void run_benchmark(){
   char filename[FILENAME_MAX];
   int ret;
+  int fd;
+  char * buf = malloc(file_size);
+
+  for(int f=0; f < num; f++){
+    for(int d=0; d < dirs; d++){
+      int curRankFolder = (rank + offset * d) % size;
+      sprintf(filename, "%s/%d/%d/file-%d", dir, curRankFolder, d, precreate + f);
+      if (verbosity)
+        printf("%d Write %s \n", rank, filename);
+
+      fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
+      if (fd == -1){
+        printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
+        b_file_creation_errors++;
+      }else{
+        b_file_created++;
+
+        ret = write(fd, buf, file_size);
+        if (ret != file_size){
+          printf("Error while writing the file %s (%s)\n", filename, strerror(errno));
+          b_file_creation_errors++;
+        }
+        close(fd);
+      }
+
+      int nextRank = (rank + offset * (d+1)) % size;
+      sprintf(filename, "%s/%d/%d/file-%d", dir, nextRank, d, f);
+      struct stat file_stats;
+      if (verbosity)
+        printf("%d Read %s \n", rank, filename);
+
+      ret = stat(filename, & file_stats);
+      if(ret != 0){
+        printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
+        b_file_access_errors++;
+      }
+
+      fd = open(filename, O_RDONLY, 0644);
+      if (fd == -1){
+        printf("Error while accessing the file %s (%s)\n", filename, strerror(errno));
+        b_file_access_errors++;
+      }else{
+        b_file_accessed++;
+
+        ret = read(fd, buf, file_size);
+        if (ret != file_size){
+          printf("Error while reading the file %s (%s)\n", filename, strerror(errno));
+          b_file_access_errors++;
+        }
+        close(fd);
+      }
+
+      ret = unlink(filename);
+      if (ret != 0){
+        b_file_access_errors++;
+      }
+    }
+  }
+  free(buf);
 }
 
 void run_cleanup(){
@@ -131,7 +195,7 @@ void run_cleanup(){
 
   for(int d=0; d < dirs; d++){
     for(int f=0; f < precreate; f++){
-      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f);
+      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f + num);
       ret = unlink(filename);
       if (ret == 0){
         c_files_deleted++;
@@ -148,12 +212,36 @@ void run_cleanup(){
 }
 
 void print_additional_report_header(){
-  printf("/Pre CreatedDirs Errors CreateFiles Errors\t/Bench\t/Clean\n");
+  printf("/Pre CreatedDirs CreateFiles ");
+  printf("\t/Bench Created Accessed");
+  printf("\t/Clean Deleted\n");
 }
 
 void print_additional_reports(){
-  printf("     %d\t\t %d\t%d\t    %d\n", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
+  printf("     %d(%d)\t%d(%d)", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
+
+  printf("\t\t\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
+  printf("\t\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
 }
+
+
+static option_help options [] = {
+  {'T', "target", "Target directory where to run the benchmark.", OPTION_REQUIRED_ARGUMENT, 's', & dir},
+  {'N', "num", "Number of I/O operations per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
+  {'P', "precreate", "Number of files to precreate per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
+  {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_REQUIRED_ARGUMENT, 'd', & offset},
+  {'D', "dirs", "Number of I/O operations per thread.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
+
+  {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
+
+  {0, "skip-cleanup-phase", "Skip the cleanup phase", OPTION_FLAG, 'd', & skip_cleanup},
+  {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & ignore_precreate_errors},
+  {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
+
+  {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & verbosity},
+
+  {0, 0, 0, 0, 0, NULL}
+  };
 
 int main(int argc, char ** argv){
   int ret;
@@ -161,23 +249,6 @@ int main(int argc, char ** argv){
   MPI_Comm_rank(MPI_COMM_WORLD, & rank);
   MPI_Comm_size(MPI_COMM_WORLD, & size);
 
-  option_help options [] = {
-    {'T', "target", "Target directory where to run the benchmark.", OPTION_REQUIRED_ARGUMENT, 's', & dir},
-    {'N', "num", "Number of I/O operations per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
-    {'P', "precreate", "Number of files to precreate per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
-    {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_REQUIRED_ARGUMENT, 'd', & offset},
-    {'D', "dirs", "Number of I/O operations per thread.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
-
-    {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
-
-    {0, "skip-cleanup-phase", "Skip the cleanup phase", OPTION_FLAG, 'd', & skip_cleanup},
-    {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & ignore_precreate_errors},
-    {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
-
-    {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & verbosity},
-
-    {0, 0, 0, 0, 0, NULL}
-    };
   parseOptions(argc, argv, options);
 
 
@@ -188,11 +259,11 @@ int main(int argc, char ** argv){
   }
 
   timer bench_start;
-  double t_all, t_precreate, t_benchmark, t_cleanup;
+  double t_all, t_precreate, t_benchmark, t_cleanup = 0;
   // individual timers
   double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
-  double t_precreate_max, t_benchmark_max, t_cleanup_max = 0;
+  double t_precreate_max, t_benchmark_max, t_cleanup_max;
 
   if (rank == 0){
     ret = mkdir(dir, 0755);
