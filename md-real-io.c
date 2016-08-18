@@ -74,6 +74,7 @@ double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
 #define LLU (long long unsigned)
+#define min(a,b) (a < b ? a : b)
 
 void run_precreate(){
   char filename[FILENAME_MAX];
@@ -270,10 +271,10 @@ static void prepare_report(){
       printf("Errors: %llu /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu\n", LLU sumErrors, LLU errors[0], LLU errors[1], LLU errors[2], LLU errors[3], LLU errors[4] );
     }
 
-    printf("\nCompound performance:");
-    printf("Precreate: %.1f (create dirs, files, write, close)\n", (p_dirs_created + p_files_created) / t_precreate);
-    printf("Benchmark: %.1f (open, write, close, stat, open, read, close, unlink)\n", (b_file_created + b_file_accessed) / t_benchmark );
-    printf("Delete:    %.1f (delete dirs, files)\n", (c_files_deleted) / t_cleanup );
+    printf("\nCompound performance:\n");
+    printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, file, write, close)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
+    printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (open, write, close, stat, open, read, close, unlink)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
+    printf("Delete:    %.1f elements/s (dirs+files) ops = (delete dirs, files)\n", (correct[4]+correct[5]) / t_cleanup );
 
   }else{ // rank != 0
     ret = MPI_Reduce(t_max, NULL, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
