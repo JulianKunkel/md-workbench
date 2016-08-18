@@ -1,0 +1,6 @@
+#!/bin/bash
+module load intel
+module load bullxmpi
+
+./compile.sh
+

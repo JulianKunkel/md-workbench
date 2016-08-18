@@ -11,7 +11,7 @@ The pattern is derived from an access pattern from the Parabench benchmark that 
 
 ## Requirements
 
-The C code needs MPI and uses GCC for compilation.
+The C code needs MPI and is tested with GCC and Intel compilers.
 See ./compile.sh how to build the benchmark
 
 ## Execution
