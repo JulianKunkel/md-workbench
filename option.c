@@ -252,6 +252,7 @@ void parseOptions(int argc, char ** argv, option_help * args){
       printf("Error: Missing some required arguments\n\n");
       print_help(argv[0], args);
     }
+    MPI_Finalize();
     exit(1);
   }
 
@@ -259,10 +260,14 @@ void parseOptions(int argc, char ** argv, option_help * args){
     if (rank == 0){
       print_help(argv[0], args);
     }
+    MPI_Finalize();
     exit(0);
   }
   if(error != 0){
-    printf("Invalid options, aborting\n");
+    if (rank == 0){
+      printf("Invalid options, aborting\n");
+    }
+    MPI_Finalize();
     exit(1);
   }
 }
