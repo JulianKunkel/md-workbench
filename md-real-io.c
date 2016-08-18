@@ -22,6 +22,9 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
 
 #include "util.h"
 #include "option.h"
@@ -47,8 +50,15 @@ int ignore_precreate_errors = 0;
 int rank;
 int size;
 
+// statistics for the operations
 int p_dirs_created = 0;
 int p_dirs_creation_errors = 0;
+int p_files_created = 0;
+int p_files_creation_errors = 0;
+
+int c_files_deleted = 0;
+int c_files_deletion_error = 0;
+
 
 #define FILENAME_MAX 4096
 
@@ -82,22 +92,68 @@ void run_precreate(){
       }
     }
   }
+
+  char * buf = malloc(file_size);
+  memset(buf, rank % 256, file_size);
+
+  // create the files
+  for(int d=0; d < dirs; d++){
+    for(int f=0; f < precreate; f++){
+      int fd;
+      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f);
+      fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
+      if (fd == -1) goto error;
+      ret = write(fd, buf, file_size);
+      if (ret != file_size) goto error;
+      close(fd);
+
+      p_files_created++;
+      continue;
+error:
+      p_files_creation_errors++;
+      if (! ignore_precreate_errors){
+        printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+    }
+  }
+  free(buf);
 }
 
 void run_benchmark(){
+  char filename[FILENAME_MAX];
+  int ret;
 
 }
 
 void run_cleanup(){
+  char filename[FILENAME_MAX];
+  int ret;
 
+  for(int d=0; d < dirs; d++){
+    for(int f=0; f < precreate; f++){
+      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f);
+      ret = unlink(filename);
+      if (ret == 0){
+        c_files_deleted++;
+      }else{
+        c_files_deletion_error++;
+      }
+    }
+
+    sprintf(filename, "%s/%d/%d", dir, rank, d);
+    ret = rmdir(filename);
+  }
+  sprintf(filename, "%s/%d", dir, rank);
+  ret = rmdir(filename);
 }
 
 void print_additional_report_header(){
-  printf("/Pre CreatedDirs Errors\t/Bench\t/Clean\n");
+  printf("/Pre CreatedDirs Errors CreateFiles Errors\t/Bench\t/Clean\n");
 }
 
 void print_additional_reports(){
-  printf("     %d\t\t %d\n", p_dirs_created, p_dirs_creation_errors);
+  printf("     %d\t\t %d\t%d\t    %d\n", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
 }
 
 int main(int argc, char ** argv){
@@ -138,7 +194,7 @@ int main(int argc, char ** argv){
   double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
   ret = mkdir(dir, 0755);
-  if (ret != 0 && errno != EEXIST){
+  if ( ret != 0 ){
     printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
@@ -169,6 +225,7 @@ int main(int argc, char ** argv){
 
   t_all = stop_timer(bench_start);
   if (rank == 0){
+    ret = rmdir(dir);
     printf("Total runtime: %.2fs Precreate: %.2fs Benchmark: %.2fs Cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
   }
 
