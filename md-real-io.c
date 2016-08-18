@@ -17,6 +17,7 @@
 
 #include <mpi.h>
 
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -57,6 +58,7 @@ int p_files_created = 0;
 int p_files_creation_errors = 0;
 
 int c_files_deleted = 0;
+int c_dirs_deleted = 0;
 int c_files_deletion_error = 0;
 
 int b_file_created = 0;
@@ -64,7 +66,14 @@ int b_file_accessed = 0;
 int b_file_creation_errors = 0;
 int b_file_access_errors = 0;
 
+// timers
+double t_all, t_precreate, t_benchmark, t_cleanup = 0;
+double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
+
 #define FILENAME_MAX 4096
+
+#define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
+#define LLU (long long unsigned)
 
 void run_precreate(){
   char filename[FILENAME_MAX];
@@ -130,6 +139,7 @@ void run_benchmark(){
   int ret;
   int fd;
   char * buf = malloc(file_size);
+  memset(buf, rank % 256, file_size);
 
   for(int f=0; f < num; f++){
     for(int d=0; d < dirs; d++){
@@ -143,12 +153,12 @@ void run_benchmark(){
         printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
         b_file_creation_errors++;
       }else{
-        b_file_created++;
-
         ret = write(fd, buf, file_size);
         if (ret != file_size){
           printf("Error while writing the file %s (%s)\n", filename, strerror(errno));
           b_file_creation_errors++;
+        }else{
+          b_file_created++;
         }
         close(fd);
       }
@@ -163,6 +173,7 @@ void run_benchmark(){
       if(ret != 0){
         printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
+        continue;
       }
 
       fd = open(filename, O_RDONLY, 0644);
@@ -170,13 +181,14 @@ void run_benchmark(){
         printf("Error while accessing the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
       }else{
-        b_file_accessed++;
-
         ret = read(fd, buf, file_size);
         if (ret != file_size){
           printf("Error while reading the file %s (%s)\n", filename, strerror(errno));
           b_file_access_errors++;
+          close(fd);
+          continue;
         }
+        b_file_accessed++;
         close(fd);
       }
 
@@ -206,22 +218,91 @@ void run_cleanup(){
 
     sprintf(filename, "%s/%d/%d", dir, rank, d);
     ret = rmdir(filename);
+    if (ret == 0){
+      c_dirs_deleted++;
+    }
   }
   sprintf(filename, "%s/%d", dir, rank);
   ret = rmdir(filename);
+  if (ret == 0){
+    c_dirs_deleted++;
+  }
 }
 
-void print_additional_report_header(){
+static void print_additional_thread_report_header(){
   printf("/Pre CreatedDirs CreateFiles ");
   printf("\t/Bench Created Accessed");
   printf("\t/Clean Deleted\n");
 }
 
-void print_additional_reports(){
-  printf("     %d(%d)\t%d(%d)", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
+static void print_additional_thread_reports(char * b){
+  b += sprintf(b, "%d\t%.2fs\t\t%.2fs\t\t%.2fs\t", rank, t_precreate_i, t_benchmark_i, t_cleanup_i);
+  b += sprintf(b, "     %d(%d)\t%d(%d)", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
+  b +=  sprintf(b, "\t\t\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
+  b += sprintf(b, "\t\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
+}
 
-  printf("\t\t\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
-  printf("\t\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
+static void prepare_report(){
+  int ret;
+  double t_max[3] = {t_precreate - t_precreate_i , t_benchmark - t_benchmark_i , t_cleanup - t_cleanup_i};
+
+  uint64_t errors[] = {p_dirs_creation_errors, p_files_creation_errors, b_file_creation_errors, b_file_access_errors, c_files_deletion_error};
+  uint64_t correct[] = {p_dirs_created, p_files_created, b_file_created, b_file_accessed, c_files_deleted, c_dirs_deleted};
+
+  if (rank == 0){
+    ret = rmdir(dir);
+    ret = MPI_Reduce(MPI_IN_PLACE, & t_max, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+    ret = MPI_Reduce(MPI_IN_PLACE, errors, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+    ret = MPI_Reduce(MPI_IN_PLACE, correct, 6, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+    uint64_t sumErrors = errors[0] + errors[1] + errors[2] + errors[3] + errors[4];
+
+    printf("\nTotal runtime: %.3fs precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
+    printf("Barrier time:        precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_max[0], t_max[1], t_max[2]);
+    printf("Operations:          /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu dirs: %llu\n" , LLU correct[0], LLU correct[1], LLU correct[2], LLU correct[3], LLU correct[4], LLU correct[5]);
+
+    double v_pre = LLU correct[1] / (1024.0*1024) * file_size;
+    double v_bench = LLU correct[2] / (1024.0*1024) * file_size;
+    printf("Volume:              precreate: %.1f MiB benchmark: %.1f MiB\n", v_pre, v_bench);
+    if(sumErrors > 0){
+      printf("Errors: %llu /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu\n", LLU sumErrors, LLU errors[0], LLU errors[1], LLU errors[2], LLU errors[3], LLU errors[4] );
+    }
+
+    printf("\nCompound performance:");
+    printf("Precreate: %.1f (create dirs, files, write, close)\n", (p_dirs_created + p_files_created) / t_precreate);
+    printf("Benchmark: %.1f (open, write, close, stat, open, read, close, unlink)\n", (b_file_created + b_file_accessed) / t_benchmark );
+    printf("Delete:    %.1f (delete dirs, files)\n", (c_files_deleted) / t_cleanup );
+
+  }else{ // rank != 0
+    ret = MPI_Reduce(t_max, NULL, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+
+    ret = MPI_Reduce(errors, NULL, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    ret = MPI_Reduce(correct, NULL, 6, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+  }
+
+  if( thread_report ){
+    // individual reports per thread
+    char thread_buffer[4096];
+
+    if (rank == 0){
+      printf("\nRank\tPrecreate\tBenchmark\tCleanup\t");
+      print_additional_thread_report_header();
+
+      print_additional_thread_reports(thread_buffer);
+      printf("%s", thread_buffer);
+      for(int i=1; i < size; i++){
+        MPI_Recv(thread_buffer, 4096, MPI_CHAR, i, 4711, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("%s", thread_buffer);
+      }
+    }else{
+      print_additional_thread_reports(thread_buffer);
+      MPI_Send(thread_buffer, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
+    }
+  }
 }
 
 
@@ -255,15 +336,13 @@ int main(int argc, char ** argv){
   size_t total_files_count = dirs * (size_t) (num + precreate) * size;
 
   if (rank == 0){
+    if(num > precreate){
+      printf("WARNING: num > precreate, this may cause the situation that no files are available to read\n");
+    }
     printf("MD-REAL-IO total files: %zu (version: %s)\n", total_files_count, VERSION);
   }
 
   timer bench_start;
-  double t_all, t_precreate, t_benchmark, t_cleanup = 0;
-  // individual timers
-  double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
-
-  double t_precreate_max, t_benchmark_max, t_cleanup_max;
 
   if (rank == 0){
     ret = mkdir(dir, 0755);
@@ -303,38 +382,7 @@ int main(int argc, char ** argv){
 
   t_all = stop_timer(bench_start);
 
-  t_precreate_max = t_precreate - t_precreate_i;
-  t_benchmark_max = t_benchmark - t_benchmark_i;
-  t_cleanup_max = t_cleanup - t_cleanup_i;
-
-  if (rank == 0){
-    ret = rmdir(dir);
-    MPI_Reduce(MPI_IN_PLACE, & t_precreate_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(MPI_IN_PLACE, & t_benchmark_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(MPI_IN_PLACE, & t_cleanup_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-
-    printf("Total runtime: %.2fs precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
-    printf("Barrier waiting time after precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_precreate_max, t_benchmark_max, t_cleanup_max);
-  }else{
-    MPI_Reduce(& t_precreate_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(& t_benchmark_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    MPI_Reduce(& t_cleanup_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-  }
-
-  if( thread_report ){
-    // individual reports per thread
-    if (rank == 0){
-      printf("\nRank\tPrecreate\tBenchmark\tCleanup\t");
-      print_additional_report_header();
-    }
-    for(int i=0; i < size; i++){
-      MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == i){
-        printf("%d\t%.2fs\t\t%.2fs\t\t%.2fs\t", rank, t_precreate_i, t_benchmark_i, t_cleanup_i);
-        print_additional_reports();
-      }
-    }
-  }
+  prepare_report();
 
   MPI_Finalize();
   return 0;
