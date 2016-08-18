@@ -21,7 +21,10 @@
 #include <unistd.h>
 #include <string.h>
 
-#include <option.h>
+#include <mpi.h>
+
+#include "option.h"
+
 
 static int print_value(option_help * o){
   int pos = 0;
@@ -148,6 +151,8 @@ void parseOptions(int argc, char ** argv, option_help * args){
       requiredArgsNeeded++;
     }
   }
+  int rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, & rank);
 
   for(i=1; i < argc; i++){
     char * txt = argv[i];
@@ -186,7 +191,8 @@ void parseOptions(int argc, char ** argv, option_help * args){
                 strcat(str_s, ") ");
               }
 
-              printf("Error option %srequires an argument.\n", str_s);
+              if (rank == 0)
+                printf("Error option %srequires an argument.\n", str_s);
               error = 1;
               break;
             }
@@ -210,7 +216,7 @@ void parseOptions(int argc, char ** argv, option_help * args){
               }
               case('c'):{
                 (*(char *)o->variable) = arg[0];
-                if(strlen(arg) > 1){
+                if(strlen(arg) > 1 && rank == 0){
                   printf("Error, ignoring remainder of string for option %c (%s).\n", o->shortVar, o->longVar);
                 }
                 break;
@@ -234,20 +240,25 @@ void parseOptions(int argc, char ** argv, option_help * args){
         if(strcmp(txt, "-h") == 0 || strcmp(txt, "--help") == 0){
           printhelp=1;
         }else{
-          printf("Error invalid argument: %s\n", txt);
+          if (rank == 0)
+            printf("Error invalid argument: %s\n", txt);
           error = 1;
         }
     }
   }
 
   if( requiredArgsSeen != requiredArgsNeeded ){
-    printf("Error: Missing some required arguments\n\n");
-    print_help(argv[0], args);
+    if (rank == 0){
+      printf("Error: Missing some required arguments\n\n");
+      print_help(argv[0], args);
+    }
     exit(1);
   }
 
   if(printhelp != 0){
-    print_help(argv[0], args);
+    if (rank == 0){
+      print_help(argv[0], args);
+    }
     exit(0);
   }
   if(error != 0){

@@ -22,18 +22,67 @@
 #include "util.h"
 #include "option.h"
 
+#ifndef VERSION
+  #define VERSION "UNKNOWN"
+#endif
+
 char * dir = "./out";
+int num = 1250;
+int precreate = 2917;
+int offset = 24;
+int dirs = 10;
+
+int file_size = 3900;
+
+int verbosity = 0;
+int thread_report = 0;
+
+int rank;
+int size;
+
+void run_benchmark(){
+
+}
 
 int main(int argc, char ** argv){
+
+  MPI_Init(& argc, & argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, & rank);
+  MPI_Comm_size(MPI_COMM_WORLD, & size);
+
   option_help options [] = {
-    {'d', "directory", "Directory where to run the benchmark.", OPTION_REQUIRED_ARGUMENT, 's', & dir},
+    {'T', "target", "Target directory where to run the benchmark.", OPTION_REQUIRED_ARGUMENT, 's', & dir},
+    {'N', "num", "Number of I/O operations per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
+    {'P', "precreate", "Number of files to precreate per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
+    {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_REQUIRED_ARGUMENT, 'd', & offset},
+    {'D', "dirs", "Number of I/O operations per thread.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
+
+    {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
+
+    {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
+
+    {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & verbosity},
+
     {0, 0, 0, 0, 0, NULL}
     };
   parseOptions(argc, argv, options);
 
+  if (rank == 0){
+    printf("MD-REAL-IO (version: %s)\n", VERSION);
+  }
+
   timer bench_start;
+  MPI_Barrier(MPI_COMM_WORLD);
   start_timer(& bench_start);
+
+  run_benchmark();
+  MPI_Barrier(MPI_COMM_WORLD);
+
   double runtime = stop_timer(bench_start);
-  printf("Runtime: %.2fs\n", runtime);
+  if (rank == 0){
+    printf("Runtime: %.2fs\n", runtime);
+  }
+
+  MPI_Finalize();
   return 0;
 }
