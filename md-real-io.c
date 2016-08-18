@@ -123,7 +123,6 @@ error:
 void run_benchmark(){
   char filename[FILENAME_MAX];
   int ret;
-
 }
 
 void run_cleanup(){
@@ -193,28 +192,36 @@ int main(int argc, char ** argv){
   // individual timers
   double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
-  ret = mkdir(dir, 0755);
-  if ( ret != 0 ){
-    printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
-    MPI_Abort(MPI_COMM_WORLD, 1);
+  double t_precreate_max, t_benchmark_max, t_cleanup_max = 0;
+
+  if (rank == 0){
+    ret = mkdir(dir, 0755);
+    if ( ret != 0 ){
+      printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
   start_timer(& bench_start);
 
   timer tmp;
+
+  // pre-creation phase
   start_timer(& tmp);
   run_precreate();
   t_precreate_i = stop_timer(tmp);
   MPI_Barrier(MPI_COMM_WORLD);
   t_precreate = stop_timer(tmp);
 
+  // benchmark phase
   start_timer(& tmp);
   run_benchmark();
   t_benchmark_i = stop_timer(tmp);
   MPI_Barrier(MPI_COMM_WORLD);
   t_benchmark = stop_timer(tmp);
 
+  // cleanup phase
   if (! skip_cleanup){
     start_timer(& tmp);
     run_cleanup();
@@ -224,9 +231,23 @@ int main(int argc, char ** argv){
   }
 
   t_all = stop_timer(bench_start);
+
+  t_precreate_max = t_precreate - t_precreate_i;
+  t_benchmark_max = t_benchmark - t_benchmark_i;
+  t_cleanup_max = t_cleanup - t_cleanup_i;
+
   if (rank == 0){
     ret = rmdir(dir);
-    printf("Total runtime: %.2fs Precreate: %.2fs Benchmark: %.2fs Cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
+    MPI_Reduce(MPI_IN_PLACE, & t_precreate_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(MPI_IN_PLACE, & t_benchmark_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(MPI_IN_PLACE, & t_cleanup_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    printf("Total runtime: %.2fs precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
+    printf("Barrier waiting time after precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_precreate_max, t_benchmark_max, t_cleanup_max);
+  }else{
+    MPI_Reduce(& t_precreate_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(& t_benchmark_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(& t_cleanup_max, NULL, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   }
 
   if( thread_report ){
