@@ -31,4 +31,6 @@ typedef struct{
   void * variable;
 } option_help;
 
+#define LAST_OPTION {0, 0, 0, (option_value_type) 0, 0, NULL}
+
 void parseOptions(int argc, char ** argv, option_help * args);

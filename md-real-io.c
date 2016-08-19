@@ -70,7 +70,9 @@ int b_file_access_errors = 0;
 double t_all, t_precreate, t_benchmark, t_cleanup = 0;
 double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
+#ifndef FILENAME_MAX
 #define FILENAME_MAX 4096
+#endif
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
 #define LLU (long long unsigned)
@@ -321,8 +323,7 @@ static option_help options [] = {
   {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
 
   {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & verbosity},
-
-  {0, 0, 0, 0, 0, NULL}
+  LAST_OPTION
   };
 
 int main(int argc, char ** argv){
