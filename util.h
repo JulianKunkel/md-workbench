@@ -21,7 +21,7 @@
 typedef clock64_t timer;
 
 static void start_timer(timer * t1) {
-    *t1 = clock64_t();
+    *t1 = clock64();
 }
 
 static double stop_timer(timer t1) {
