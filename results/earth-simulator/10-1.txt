@@ -1,0 +1,24 @@
+MD-REAL-IO total files: zu (version: )
+
+Total runtime: 142.247s precreate: 48.24s benchmark: 53.19s cleanup: 40.82s
+Barrier time:        precreate: 2.91s benchmark: 1.23s cleanup: 1.97s
+Operations:          /Pre dir: 110 files: 300000 /Bench create: 100000 access: 100000 /Clean files: 300000 dirs: 110
+Volume:              precreate: 1115.8 MiB benchmark: 371.9 MiB
+
+Compound performance:
+Precreate: 6221.4 elements/s (dirs+files) 23.1 MiB/s ops = (create dir, file, write, close)
+Benchmark: 1879.9 iters/s 14.0 MiB/s iteration = (open, write, close, stat, open, read, close, unlink)
+Delete:    7352.9 elements/s (dirs+files) ops = (delete dirs, files)
+
+Rank	Precreate	Benchmark	Cleanup	/Pre CreatedDirs CreateFiles 	/Bench Created Accessed	/Clean Deleted
+0	45.33s		52.41s		40.07s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+1	45.25s		52.42s		40.01s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+2	45.34s		52.45s		40.12s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+3	45.24s		52.44s		39.59s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+4	45.31s		52.40s		40.12s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+5	45.36s		52.45s		39.95s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+6	45.23s		52.37s		39.65s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+7	45.34s		52.40s		40.15s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+8	45.32s		52.36s		39.80s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+9	45.37s		52.40s		39.97s	     11(0)	30000(0)			10000(0)	10000(0)		30000(0)
+logout

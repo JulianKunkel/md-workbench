@@ -1,0 +1,26 @@
+#PBS -q L                      # batch queue name
+#PBS -b 1                      # number of nodes
+#PBS -l elapstim_req=01:30:00  # elapse time
+#PBS -l filecap_job=100gb      # disk space per node
+
+# Mail option
+#PBS -m aeb
+#PBS -M kunkel@dkrz.de
+
+# Performance check option
+#PBS -v MPIPROGINF=ALL_DETAIL
+#PBS -v F_PROGINF=DETAIL
+#PBS -v C_PROGINF=DETAIL
+
+# File staging to the work disk
+#   this item is a little complicated...
+#   -I means "stage-in"; copy excute modules, inputfiles, models
+#      to the work disk using the calculation nodes.
+#      "ALL" means all the calculation nodes you use
+#   -O means "stage-out"; copy  outputfiles from the work disk
+#
+#PBS -I "/S/home00/G4520/x0202/md-real-io,ALL:./"
+#x PBS -O "/S/data00/G1000/s0016/DKRZ/hlre3/description/ior/test/log/,ALL:./"
+
+mpirun -nnp 10 ./md-real-io -T=./test -O=1 -D=10 -P=3000 -N=1000 -F=3900 --thread-reports
+
