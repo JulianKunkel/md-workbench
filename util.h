@@ -17,6 +17,22 @@
 
 #include <time.h>
 
+#ifdef ESM
+typedef clock64_t timer;
+
+static void start_timer(timer * t1) {
+    *t1 = clock64_t();
+}
+
+static double stop_timer(timer t1) {
+    timer end;
+    start_timer(& end);
+    return (end - t1) / 1000.0 / 1000.0;
+}
+
+
+#else // POSIX COMPLAINT
+
 typedef struct timespec timer;
 
 static void start_timer(timer * t1) {
@@ -47,3 +63,4 @@ static double stop_timer(timer t1) {
     start_timer(& end);
     return time_to_double(time_diff(end, t1));
 }
+#endif
