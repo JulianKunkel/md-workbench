@@ -28,12 +28,20 @@
 
 #include <plugins/md-plugin.h>
 
+#include <plugins/md-posix.h>
+#include <plugins/md-postgres.h>
+#include <plugins/md-mongo.h>
+
+
 struct md_plugin * md_plugin_list[] = {
 #ifdef MD_PLUGIN_POSIX
 & md_plugin_posix,
 #endif
 #ifdef MD_PLUGIN_POSTGRES
 & md_plugin_postgres,
+#endif
+#ifdef MD_PLUGIN_MONGO
+& md_plugin_mongo,
 #endif
 NULL
 };

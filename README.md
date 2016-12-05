@@ -14,6 +14,13 @@ The pattern is derived from an access pattern from the Parabench benchmark that 
 The C code needs MPI and is tested with GCC and Intel compilers.
 See ./compile.sh how to build the benchmark
 
+Supported plugins add further requirements:
+* postgres: needs the libpq
+  * Ubuntu16.04: libpq-dev
+* mongodb: depends on the mongoc and bson
+  * Ubuntu: Install a recent MongoDB https://docs.mongodb.com/v3.2/tutorial/install-mongodb-on-ubuntu/
+   * Update the mongodb driver: http://mongoc.org/libmongoc/1.3.0/installing.html
+
 ## Execution
 
 To see the available options run:
@@ -33,5 +40,3 @@ This example runs 10 processes. It runs in three phases:
    3. Cleanup: each process deletes the directories and files it is responsible for.
 
 A file always has the file size of 3900 Bytes.
-
-

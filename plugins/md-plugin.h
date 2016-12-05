@@ -54,11 +54,4 @@ enum MD_ERROR{
   MD_NOOP, // this is returned, if the implementation doesn't do anything
 };
 
-#ifdef MD_PLUGIN_POSIX
-#include <plugins/md-posix.h>
-#endif
-#ifdef MD_PLUGIN_POSTGRES
-#include <plugins/md-postgres.h>
-#endif
-
 #endif
