@@ -18,9 +18,12 @@
 #ifndef MD_PLUGIN_H
 #define MD_PLUGIN_H
 
+#include <md_option.h>
+
 struct md_plugin{
   char * name; // the name of the plugin, needed for -I option
 
+  option_help *  (*get_options)();
   // rank0 calls these methods to create / purge the initial setup:
   int (*prepare_testdir)(char * dir);
   int (*purge_testdir)(char * dir);

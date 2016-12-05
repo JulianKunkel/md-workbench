@@ -36,6 +36,9 @@ typedef struct{
 
 #define LAST_OPTION {0, 0, 0, (option_value_type) 0, 0, NULL}
 
-void parseOptions(int argc, char ** argv, option_help * args);
+void print_help(option_help * args, int is_plugin);
+
+//@return the number of parsed arguments
+int parseOptions(int argc, char ** argv, option_help * args, int * print_help);
 
 #endif

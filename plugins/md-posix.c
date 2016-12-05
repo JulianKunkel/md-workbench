@@ -24,6 +24,15 @@
 #include <plugins/md-posix.h>
 
 
+static option_help options [] = {
+  LAST_OPTION
+};
+
+static option_help * get_options(){
+  return options;
+}
+
+
 static int prepare_testdir(char * dir){
   return mkdir(dir, 0755);
 }
@@ -98,6 +107,7 @@ static int delete_file(char * filename, char * prefix, int rank, int dir, int it
 
 struct md_plugin md_plugin_posix = {
   "posix",
+  get_options,
   prepare_testdir,
   purge_testdir,
   create_rank_dir,

@@ -23,7 +23,7 @@
 
 #include <mpi.h>
 
-#include "option.h"
+#include <md_option.h>
 
 
 static int print_value(option_help * o){
@@ -100,9 +100,7 @@ static void print_help_section(option_help * args, option_value_type type, char 
   }
 }
 
-static void print_help(char * name, option_help * args){
-  printf("Synopsis: %s ", name);
-
+void print_help(option_help * args, int is_plugin){
   option_help * o;
   int optionalArgs = 0;
   for(o = args; o->shortVar != 0 || o->longVar != 0 ; o++){
@@ -132,16 +130,17 @@ static void print_help(char * name, option_help * args){
   if (optionalArgs){
     printf(" [Optional Args]");
   }
-  printf("\n");
+  if (! is_plugin){
+    printf(" -- <Plugin options, see below>\n");
+  }
 
   print_help_section(args, OPTION_REQUIRED_ARGUMENT, "Required arguments");
   print_help_section(args, OPTION_FLAG, "Flags");
   print_help_section(args, OPTION_OPTIONAL_ARGUMENT, "Optional arguments");
 }
 
-void parseOptions(int argc, char ** argv, option_help * args){
+int parseOptions(int argc, char ** argv, option_help * args, int * printhelp){
   int error = 0;
-  int printhelp = 0;
   int requiredArgsSeen = 0;
   int requiredArgsNeeded = 0;
   int i;
@@ -161,6 +160,10 @@ void parseOptions(int argc, char ** argv, option_help * args){
     if(arg != NULL){
       arg[0] = 0;
       arg++;
+    }
+    if(strcmp(txt, "--") == 0){
+      // we found plugin options
+      break;
     }
 
     // try to find matching option help
@@ -238,7 +241,7 @@ void parseOptions(int argc, char ** argv, option_help * args){
     }
     if (! foundOption){
         if(strcmp(txt, "-h") == 0 || strcmp(txt, "--help") == 0){
-          printhelp=1;
+          *printhelp=1;
         }else{
           if (rank == 0)
             printf("Error invalid argument: %s\n", txt);
@@ -250,24 +253,16 @@ void parseOptions(int argc, char ** argv, option_help * args){
   if( requiredArgsSeen != requiredArgsNeeded ){
     if (rank == 0){
       printf("Error: Missing some required arguments\n\n");
-      print_help(argv[0], args);
     }
-    MPI_Finalize();
-    exit(1);
+    *printhelp = -1;
   }
 
-  if(printhelp != 0){
-    if (rank == 0){
-      print_help(argv[0], args);
-    }
-    MPI_Finalize();
-    exit(0);
-  }
   if(error != 0){
     if (rank == 0){
-      printf("Invalid options, aborting\n");
+      printf("Invalid options\n");
     }
-    MPI_Finalize();
-    exit(1);
+    *printhelp = -1;
   }
+
+  return i;
 }

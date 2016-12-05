@@ -23,8 +23,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "util.h"
-#include "option.h"
+#include <md_util.h>
+#include <md_option.h>
 
 #include <plugins/md-plugin.h>
 
@@ -349,13 +349,35 @@ static void find_interface(){
 
 int main(int argc, char ** argv){
   int ret;
+  int printhelp = 0;
   MPI_Init(& argc, & argv);
   MPI_Comm_rank(MPI_COMM_WORLD, & rank);
   MPI_Comm_size(MPI_COMM_WORLD, & size);
 
-  parseOptions(argc, argv, options);
+  int parsed = parseOptions(argc, argv, options, & printhelp);
 
   find_interface();
+
+  if (argc > parsed){
+    parseOptions(argc - parsed, argv + parsed, plugin->get_options(), & printhelp);
+  }
+
+  if(printhelp != 0){
+    if (rank == 0){
+      printf("\nSynopsis: %s ", argv[0]);
+
+      print_help(options, 0);
+
+      printf("\nPlugin options for interface %s\n", interface);
+      print_help(plugin->get_options(), 1);
+    }
+    MPI_Finalize();
+    if(printhelp == 1){
+      exit(0);
+    }else{
+      exit(1);
+    }
+  }
 
   size_t total_files_count = dirs * (size_t) (num + precreate) * size;
 
