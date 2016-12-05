@@ -32,6 +32,9 @@ struct md_plugin * md_plugin_list[] = {
 #ifdef MD_PLUGIN_POSIX
 & md_plugin_posix,
 #endif
+#ifdef MD_PLUGIN_POSTGRES
+& md_plugin_postgres,
+#endif
 NULL
 };
 
@@ -42,7 +45,7 @@ NULL
 
 struct md_plugin * plugin = NULL;
 
-char * dir = "./out";
+char * dir = "out";
 char * interface = "posix";
 int num = 1000;
 int precreate = 3000;
@@ -55,6 +58,7 @@ int file_size = 3900;
 int verbosity = 0;
 int thread_report = 0;
 int skip_cleanup = 0;
+int cleanup_only = 0;
 
 int ignore_precreate_errors = 0;
 int rank;
@@ -76,8 +80,8 @@ int b_file_creation_errors = 0;
 int b_file_access_errors = 0;
 
 // timers
-double t_all, t_precreate, t_benchmark, t_cleanup = 0;
-double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
+double t_all, t_precreate = 0, t_benchmark = 0, t_cleanup = 0;
+double t_precreate_i = 0, t_benchmark_i = 0, t_cleanup_i = 0;
 
 #ifndef FILENAME_MAX
 #define FILENAME_MAX 4096
@@ -93,7 +97,9 @@ void run_precreate(){
   int ret;
 
   ret = plugin->create_rank_dir(filename, dir, rank);
-  if (ret == 0){
+  if (ret == MD_NOOP){
+    // do not increment any counter
+  }else if (ret == MD_SUCCESS){
     p_dirs_created++;
   }else{
     p_dirs_creation_errors++;
@@ -105,7 +111,9 @@ void run_precreate(){
 
   for(int i=0; i < dirs; i++){
     ret = plugin->create_dir(filename, dir, rank, i);
-    if (ret == 0){
+    if (ret == MD_NOOP){
+      // do not increment any counter
+    }else if (ret == MD_SUCCESS){
       p_dirs_created++;
     }else{
       p_dirs_creation_errors++;
@@ -123,7 +131,9 @@ void run_precreate(){
   for(int d=0; d < dirs; d++){
     for(int f=0; f < precreate; f++){
       ret = plugin->write_file(filename, buf, file_size, dir, rank, d, f);
-      if (ret == 0){
+      if (ret == MD_NOOP){
+        // do not increment any counter
+      }else if (ret == MD_SUCCESS){
         p_files_created++;
       }else{
         p_files_creation_errors++;
@@ -153,12 +163,13 @@ void run_benchmark(){
         printf("%d Write %s \n", rank, filename);
       }
 
-
       if (ret == MD_ERROR_CREATE){
         printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
         b_file_creation_errors++;
       }else{
-        if (ret != MD_SUCCESS){
+        if (ret == MD_NOOP){
+          // do not increment any counter
+        }else if (ret != MD_SUCCESS){
           printf("Error while writing the file %s (%s)\n", filename, strerror(errno));
           b_file_creation_errors++;
         }else{
@@ -167,8 +178,8 @@ void run_benchmark(){
       }
 
       int nextRank = (rank + offset * (d+1)) % size;
-      ret = plugin->stat_file(filename, dir, nextRank, d, f);
-      if(ret != 0){
+      ret = plugin->stat_file(filename, dir, nextRank, d, f, file_size);
+      if(ret != MD_SUCCESS && ret != MD_NOOP){
         printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
         continue;
@@ -179,7 +190,9 @@ void run_benchmark(){
       }
 
       ret = plugin->read_file(filename, buf, file_size,  dir, nextRank, d, f);
-      if (ret == MD_ERROR_FIND){
+      if (ret == MD_NOOP){
+        // nothing to do
+      }else if (ret == MD_ERROR_FIND){
         printf("Error while accessing the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
       }else{
@@ -191,8 +204,10 @@ void run_benchmark(){
         b_file_accessed++;
       }
 
-       plugin->delete_file(filename, dir, nextRank, d, f);
-      if (ret != 0){
+      plugin->delete_file(filename, dir, nextRank, d, f);
+      if (ret == MD_NOOP){
+        // nothing to do
+      }else if (ret != MD_SUCCESS){
         b_file_access_errors++;
       }
     }
@@ -207,7 +222,9 @@ void run_cleanup(){
   for(int d=0; d < dirs; d++){
     for(int f=0; f < precreate; f++){
       ret = plugin->delete_file(filename, dir, rank, d, f+num);
-      if (ret == 0){
+      if (ret == MD_NOOP){
+        // nothing to do
+      }else if (ret == MD_SUCCESS){
         c_files_deleted++;
       }else{
         c_files_deletion_error++;
@@ -215,12 +232,12 @@ void run_cleanup(){
     }
 
     ret = plugin->rm_dir(filename, dir, rank, d);
-    if (ret == 0){
+    if (ret == MD_SUCCESS){
       c_dirs_deleted++;
     }
   }
   ret = plugin->rm_rank_dir(filename, dir,rank);
-  if (ret == 0){
+  if (ret == MD_SUCCESS){
     c_dirs_deleted++;
   }
 }
@@ -246,7 +263,6 @@ static void prepare_report(){
   uint64_t correct[] = {p_dirs_created, p_files_created, b_file_created, b_file_accessed, c_files_deleted, c_dirs_deleted};
 
   if (rank == 0){
-    ret = plugin->purge_testdir(dir);
     ret = MPI_Reduce(MPI_IN_PLACE, & t_max, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
     ret = MPI_Reduce(MPI_IN_PLACE, errors, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -267,9 +283,13 @@ static void prepare_report(){
     }
 
     printf("\nCompound performance:\n");
-    printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, files, write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
-    printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (write, stat, read, delete)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
-    printf("Delete:    %.1f elements/s (dirs+files) ops = (delete dirs, files)\n", (correct[4]+correct[5]) / t_cleanup );
+    if (! cleanup_only){
+      printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, files, write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
+      printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (write, stat, read, delete)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
+    }
+    if (! skip_cleanup){
+      printf("Delete:    %.1f elements/s (dirs+files) ops = (delete dirs, files)\n", (correct[4]+correct[5]) / t_cleanup );
+    }
 
   }else{ // rank != 0
     ret = MPI_Reduce(t_max, NULL, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -312,6 +332,7 @@ static option_help options [] = {
 
   {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
 
+  {0, "cleanup-only", "Cleanup data only, necessary if a benchmark aborts", OPTION_FLAG, 'd', & cleanup_only},
   {0, "skip-cleanup-phase", "Skip the cleanup phase", OPTION_FLAG, 'd', & skip_cleanup},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & ignore_precreate_errors},
   {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
@@ -379,6 +400,11 @@ int main(int argc, char ** argv){
     }
   }
 
+  ret = plugin->initialize();
+  if (ret != MD_SUCCESS){
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
   size_t total_files_count = dirs * (size_t) (num + precreate) * size;
 
   if (rank == 0){
@@ -390,32 +416,38 @@ int main(int argc, char ** argv){
 
   timer bench_start;
 
-  if (rank == 0){
-    ret = plugin->prepare_testdir(dir);
-    if ( ret != 0 ){
-      printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
-      MPI_Abort(MPI_COMM_WORLD, 1);
+  if (! cleanup_only){
+    if (rank == 0){
+      ret = plugin->prepare_testdir(dir);
+      if ( ret != MD_SUCCESS && ret != MD_NOOP ){
+        printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      if (ret == MD_SUCCESS){
+        p_dirs_created++;
+      }
     }
   }
-
   MPI_Barrier(MPI_COMM_WORLD);
   start_timer(& bench_start);
 
   timer tmp;
 
-  // pre-creation phase
-  start_timer(& tmp);
-  run_precreate();
-  t_precreate_i = stop_timer(tmp);
-  MPI_Barrier(MPI_COMM_WORLD);
-  t_precreate = stop_timer(tmp);
+  if (! cleanup_only){
+    // pre-creation phase
+    start_timer(& tmp);
+    run_precreate();
+    t_precreate_i = stop_timer(tmp);
+    MPI_Barrier(MPI_COMM_WORLD);
+    t_precreate = stop_timer(tmp);
 
-  // benchmark phase
-  start_timer(& tmp);
-  run_benchmark();
-  t_benchmark_i = stop_timer(tmp);
-  MPI_Barrier(MPI_COMM_WORLD);
-  t_benchmark = stop_timer(tmp);
+    // benchmark phase
+    start_timer(& tmp);
+    run_benchmark();
+    t_benchmark_i = stop_timer(tmp);
+    MPI_Barrier(MPI_COMM_WORLD);
+    t_benchmark = stop_timer(tmp);
+  }
 
   // cleanup phase
   if (! skip_cleanup){
@@ -424,9 +456,24 @@ int main(int argc, char ** argv){
     t_cleanup_i = stop_timer(tmp);
     MPI_Barrier(MPI_COMM_WORLD);
     t_cleanup = stop_timer(tmp);
+
+    if (rank == 0){
+      ret = plugin->purge_testdir(dir);
+      if (ret != MD_SUCCESS && ret != MD_NOOP){
+        printf("Error purging the test directory\n");
+      }
+      if (ret == MD_SUCCESS){
+        c_dirs_deleted++;
+      }
+    }
   }
 
   t_all = stop_timer(bench_start);
+
+  ret = plugin->finalize();
+  if (ret != MD_SUCCESS){
+    printf("Error while finalization of module\n");
+  }
 
   prepare_report();
 

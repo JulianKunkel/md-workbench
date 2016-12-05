@@ -24,6 +24,10 @@ struct md_plugin{
   char * name; // the name of the plugin, needed for -I option
 
   option_help *  (*get_options)();
+  // called by each process to init/finalize the plugin
+  int (*initialize)();
+  int (*finalize)();
+
   // rank0 calls these methods to create / purge the initial setup:
   int (*prepare_testdir)(char * dir);
   int (*purge_testdir)(char * dir);
@@ -38,19 +42,23 @@ struct md_plugin{
   // actually used during the benchmark to access and delete objects
   int (*write_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
   int (*read_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
-  int (*stat_file)(char * out_filename, char * prefix, int rank, int dir, int iteration);
+  int (*stat_file)(char * out_filename, char * prefix, int rank, int dir, int iteration, int file_size);
   int (*delete_file)(char * out_filename, char * prefix, int rank, int dir, int iteration);
 };
 
 enum MD_ERROR{
-  MD_UNKNOWN = -1,
+  MD_ERROR_UNKNOWN = -1,
   MD_SUCCESS = 0,
   MD_ERROR_CREATE,
-  MD_ERROR_FIND
+  MD_ERROR_FIND,
+  MD_NOOP, // this is returned, if the implementation doesn't do anything
 };
 
 #ifdef MD_PLUGIN_POSIX
 #include <plugins/md-posix.h>
+#endif
+#ifdef MD_PLUGIN_POSTGRES
+#include <plugins/md-postgres.h>
 #endif
 
 #endif

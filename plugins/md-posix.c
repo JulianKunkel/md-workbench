@@ -32,6 +32,14 @@ static option_help * get_options(){
   return options;
 }
 
+static int initialize(){
+  return MD_SUCCESS;
+}
+
+static int finalize(){
+  return MD_SUCCESS;
+}
+
 
 static int prepare_testdir(char * dir){
   return mkdir(dir, 0755);
@@ -69,7 +77,7 @@ static int write_file(char * filename, char * buf, size_t file_size,  char * pre
   fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
   if (fd == -1) return MD_ERROR_CREATE;
   ret = write(fd, buf, file_size);
-  ret = (ret == file_size) ? MD_SUCCESS: MD_UNKNOWN;
+  ret = (ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
   close(fd);
   return ret;
 }
@@ -82,12 +90,12 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
   fd = open(filename, O_RDWR);
   if (fd == -1) return MD_ERROR_FIND;
   ret = read(fd, buf, file_size);
-  ret = (ret == file_size) ? MD_SUCCESS: MD_UNKNOWN;
+  ret = (ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
   close(fd);
   return ret;
 }
 
-static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration){
+static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
   struct stat file_stats;
   int ret;
   ret = stat(filename, & file_stats);
@@ -108,6 +116,8 @@ static int delete_file(char * filename, char * prefix, int rank, int dir, int it
 struct md_plugin md_plugin_posix = {
   "posix",
   get_options,
+  initialize,
+  finalize,
   prepare_testdir,
   purge_testdir,
   create_rank_dir,
