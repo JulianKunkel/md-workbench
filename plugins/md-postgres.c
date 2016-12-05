@@ -53,7 +53,6 @@ static option_help options [] = {
 };
 
 static PGconn * conn = NULL;
-static char * connection_specifier = NULL;
 
 static option_help * get_options(){
   return options;
@@ -99,8 +98,7 @@ static int purge_testdir(char * dir){
 
 static int initialize(){
   if (conn != NULL) return MD_SUCCESS;
-
-  connection_specifier = (char*) malloc(4096);
+  char * connection_specifier = (char*) malloc(4096);
   char * current_pos = connection_specifier;
 
   int pos;
@@ -110,7 +108,7 @@ static int initialize(){
     pos = sprintf(current_pos, " user = %s", username);
     current_pos += pos;
   }
-  if (strlen(username) > 1){
+  if (strlen(password) > 1){
     pos = sprintf(current_pos, " password = %s", password);
     current_pos += pos;
   }
@@ -128,8 +126,10 @@ static int initialize(){
       fprintf(stderr, "Connection to database failed: %s",  PQerrorMessage(conn));
       PQfinish(conn);
       conn = NULL;
+      free(connection_specifier);
       return MD_ERROR_UNKNOWN;
   }
+  free(connection_specifier);
 
   return MD_SUCCESS;
 }
@@ -211,13 +211,27 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
     sprintf(filename, "SELECT data FROM %s WHERE filename = '%d/%d/%d';", prefix, rank, dir, iteration);
   }
   PGresult * res;
-  res = PQexec(conn, filename);
+  res = PQexecParams(conn, filename, 0, NULL, NULL, NULL, NULL, 1);
   if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1){
     printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
-  return MD_SUCCESS;
+
+  int size = PQgetlength(res, 0, 0);
+  const char* read_data = PQgetvalue(res, 0, 0);
+  if (size > file_size){
+    PQclear(res); // short read
+    return MD_ERROR_UNKNOWN;
+  }
+  memcpy(buf, read_data, size);
+  PQclear(res);
+
+  if(file_size == size){
+    return MD_SUCCESS;
+  }
+
+  return MD_ERROR_UNKNOWN;
 }
 
 static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
@@ -235,10 +249,11 @@ static int stat_file(char * filename, char * prefix, int rank, int dir, int iter
   }
   // check the number of columns
   char * result = PQgetvalue(res, 0, 0);
-  PQclear(res);
   if (atoll(result) != file_size){
+    PQclear(res);
     return MD_ERROR_FIND;
   }
+  PQclear(res);
   return MD_SUCCESS;
 }
 
