@@ -19,12 +19,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <errno.h>
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <stdlib.h>
 
 #include "util.h"
@@ -93,10 +89,10 @@ double t_precreate_i, t_benchmark_i, t_cleanup_i = 0;
 
 void run_precreate(){
   char filename[FILENAME_MAX];
+
   int ret;
 
-  sprintf(filename, "%s/%d", dir, rank);
-  ret = mkdir(filename, 0755);
+  ret = plugin->create_rank_dir(filename, dir, rank);
   if (ret == 0){
     p_dirs_created++;
   }else{
@@ -108,9 +104,7 @@ void run_precreate(){
   }
 
   for(int i=0; i < dirs; i++){
-    sprintf(filename, "%s/%d/%d", dir, rank, i);
-    ret = mkdir(filename, 0755);
-
+    ret = plugin->create_dir(filename, dir, rank, i);
     if (ret == 0){
       p_dirs_created++;
     }else{
@@ -128,21 +122,15 @@ void run_precreate(){
   // create the files
   for(int d=0; d < dirs; d++){
     for(int f=0; f < precreate; f++){
-      int fd;
-      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f);
-      fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
-      if (fd == -1) goto error;
-      ret = write(fd, buf, file_size);
-      if (ret != file_size) goto error;
-      close(fd);
-
-      p_files_created++;
-      continue;
-error:
-      p_files_creation_errors++;
-      if (! ignore_precreate_errors){
-        printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
-        MPI_Abort(MPI_COMM_WORLD, 1);
+      ret = plugin->write_file(filename, buf, file_size, dir, rank, d, f);
+      if (ret == 0){
+        p_files_created++;
+      }else{
+        p_files_creation_errors++;
+        if (! ignore_precreate_errors){
+          printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
+          MPI_Abort(MPI_COMM_WORLD, 1);
+        }
       }
     }
   }
@@ -153,62 +141,57 @@ error:
 void run_benchmark(){
   char filename[FILENAME_MAX];
   int ret;
-  int fd;
   char * buf = malloc(file_size);
   memset(buf, rank % 256, file_size);
 
   for(int f=0; f < num; f++){
     for(int d=0; d < dirs; d++){
       int curRankFolder = (rank + offset * d) % size;
-      sprintf(filename, "%s/%d/%d/file-%d", dir, curRankFolder, d, precreate + f);
-      if (verbosity)
-        printf("%d Write %s \n", rank, filename);
 
-      fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
-      if (fd == -1){
+      ret = plugin->write_file(filename, buf, file_size,  dir, curRankFolder, d, precreate + f);
+      if (verbosity){
+        printf("%d Write %s \n", rank, filename);
+      }
+
+
+      if (ret == MD_ERROR_CREATE){
         printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
         b_file_creation_errors++;
       }else{
-        ret = write(fd, buf, file_size);
-        if (ret != file_size){
+        if (ret != MD_SUCCESS){
           printf("Error while writing the file %s (%s)\n", filename, strerror(errno));
           b_file_creation_errors++;
         }else{
           b_file_created++;
         }
-        close(fd);
       }
 
       int nextRank = (rank + offset * (d+1)) % size;
-      sprintf(filename, "%s/%d/%d/file-%d", dir, nextRank, d, f);
-      struct stat file_stats;
-      if (verbosity)
-        printf("%d Read %s \n", rank, filename);
-
-      ret = stat(filename, & file_stats);
+      ret = plugin->stat_file(filename, dir, nextRank, d, f);
       if(ret != 0){
         printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
         continue;
       }
 
-      fd = open(filename, O_RDONLY, 0644);
-      if (fd == -1){
+      if (verbosity){
+        printf("%d Access %s \n", rank, filename);
+      }
+
+      ret = plugin->read_file(filename, buf, file_size,  dir, nextRank, d, f);
+      if (ret == MD_ERROR_FIND){
         printf("Error while accessing the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
       }else{
-        ret = read(fd, buf, file_size);
-        if (ret != file_size){
+        if (ret != MD_SUCCESS){
           printf("Error while reading the file %s (%s)\n", filename, strerror(errno));
           b_file_access_errors++;
-          close(fd);
           continue;
         }
         b_file_accessed++;
-        close(fd);
       }
 
-      ret = unlink(filename);
+       plugin->delete_file(filename, dir, nextRank, d, f);
       if (ret != 0){
         b_file_access_errors++;
       }
@@ -223,8 +206,7 @@ void run_cleanup(){
 
   for(int d=0; d < dirs; d++){
     for(int f=0; f < precreate; f++){
-      sprintf(filename, "%s/%d/%d/file-%d", dir, rank, d, f + num);
-      ret = unlink(filename);
+      ret = plugin->delete_file(filename, dir, rank, d, f+num);
       if (ret == 0){
         c_files_deleted++;
       }else{
@@ -232,14 +214,12 @@ void run_cleanup(){
       }
     }
 
-    sprintf(filename, "%s/%d/%d", dir, rank, d);
-    ret = rmdir(filename);
+    ret = plugin->rm_dir(filename, dir, rank, d);
     if (ret == 0){
       c_dirs_deleted++;
     }
   }
-  sprintf(filename, "%s/%d", dir, rank);
-  ret = rmdir(filename);
+  ret = plugin->rm_rank_dir(filename, dir,rank);
   if (ret == 0){
     c_dirs_deleted++;
   }
@@ -287,8 +267,8 @@ static void prepare_report(){
     }
 
     printf("\nCompound performance:\n");
-    printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, file, write, close)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
-    printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (open, write, close, stat, open, read, close, unlink)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
+    printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, files, write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
+    printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (write, stat, read, delete)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
     printf("Delete:    %.1f elements/s (dirs+files) ops = (delete dirs, files)\n", (correct[4]+correct[5]) / t_cleanup );
 
   }else{ // rank != 0

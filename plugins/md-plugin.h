@@ -19,9 +19,31 @@
 #define MD_PLUGIN_H
 
 struct md_plugin{
-  char * name;
+  char * name; // the name of the plugin, needed for -I option
+
+  // rank0 calls these methods to create / purge the initial setup:
   int (*prepare_testdir)(char * dir);
   int (*purge_testdir)(char * dir);
+
+  // each process creates / deletes a set of entities
+  int (*create_rank_dir)(char * out_filename, char * dir, int rank);
+  int (*rm_rank_dir)(char * out_filename, char * dir, int rank);
+
+  int (*create_dir)(char * out_filename, char * prefix, int rank, int iteration);
+  int (*rm_dir)(char * out_filename, char * prefix, int rank, int iteration);
+
+  // actually used during the benchmark to access and delete objects
+  int (*write_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
+  int (*read_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
+  int (*stat_file)(char * out_filename, char * prefix, int rank, int dir, int iteration);
+  int (*delete_file)(char * out_filename, char * prefix, int rank, int dir, int iteration);
+};
+
+enum MD_ERROR{
+  MD_UNKNOWN = -1,
+  MD_SUCCESS = 0,
+  MD_ERROR_CREATE,
+  MD_ERROR_FIND
 };
 
 #ifdef MD_PLUGIN_POSIX
