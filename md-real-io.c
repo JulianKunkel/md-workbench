@@ -30,16 +30,29 @@
 #include "util.h"
 #include "option.h"
 
+#include <plugins/md-plugin.h>
+
+struct md_plugin * md_plugin_list[] = {
+#ifdef MD_PLUGIN_POSIX
+& md_plugin_posix,
+#endif
+NULL
+};
+
+
 #ifndef VERSION
   #define VERSION "UNKNOWN"
 #endif
 
+struct md_plugin * plugin = NULL;
+
 char * dir = "./out";
+char * interface = "posix";
 int num = 1000;
 int precreate = 3000;
 int dirs = 10;
 
-int offset = 24;
+int offset = 1;
 
 int file_size = 3900;
 
@@ -253,7 +266,7 @@ static void prepare_report(){
   uint64_t correct[] = {p_dirs_created, p_files_created, b_file_created, b_file_accessed, c_files_deleted, c_dirs_deleted};
 
   if (rank == 0){
-    ret = rmdir(dir);
+    ret = plugin->purge_testdir(dir);
     ret = MPI_Reduce(MPI_IN_PLACE, & t_max, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
     ret = MPI_Reduce(MPI_IN_PLACE, errors, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -310,11 +323,12 @@ static void prepare_report(){
 
 
 static option_help options [] = {
-  {'T', "target", "Target directory where to run the benchmark.", OPTION_REQUIRED_ARGUMENT, 's', & dir},
+  {'T', "target", "Target identifier (directory) where to run the benchmark.", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
+  {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & offset},
+  {'I', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & interface},
   {'N', "num", "Number of I/O operations per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
   {'P', "precreate", "Number of files to precreate per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
-  {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_REQUIRED_ARGUMENT, 'd', & offset},
-  {'D', "dirs", "Number of I/O operations per thread.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
+  {'D', "dirs", "Number of directories.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
 
   {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
 
@@ -326,6 +340,33 @@ static option_help options [] = {
   LAST_OPTION
   };
 
+static void find_interface(){
+  int is_list = strcmp(interface, "list") == 0 && rank == 0;
+  if (is_list){
+    printf("Available plugins: ");
+  }
+  struct md_plugin ** p_it = md_plugin_list;
+  while(*p_it != NULL){
+    if(is_list){
+      printf("%s ", (*p_it)->name);
+    }
+    if(strcmp((*p_it)->name, interface) == 0) {
+      // got it
+      plugin = *p_it;
+      return;
+    }
+    p_it++;
+  }
+  if (rank == 0){
+    if(is_list){
+      printf("\n");
+    }else{
+      printf("Could not find plugin for interface: %s\n", interface);
+    }
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+}
+
 int main(int argc, char ** argv){
   int ret;
   MPI_Init(& argc, & argv);
@@ -334,6 +375,7 @@ int main(int argc, char ** argv){
 
   parseOptions(argc, argv, options);
 
+  find_interface();
 
   size_t total_files_count = dirs * (size_t) (num + precreate) * size;
 
@@ -347,7 +389,7 @@ int main(int argc, char ** argv){
   timer bench_start;
 
   if (rank == 0){
-    ret = mkdir(dir, 0755);
+    ret = plugin->prepare_testdir(dir);
     if ( ret != 0 ){
       printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
       MPI_Abort(MPI_COMM_WORLD, 1);

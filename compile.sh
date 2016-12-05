@@ -8,11 +8,13 @@ if [[ "$CFLAGS" == "" ]]; then
 	CFLAGS="-g -O3 -Wall -std=gnu99"
 fi
 
-SOURCE="option.c md-real-io.c"
+CFLAGS="$CFLAGS -I. -DMD_PLUGIN_POSIX"
+
+SOURCE="option.c md-real-io.c plugins/md-posix.c"
 
 VERSION=$(git log -1 --format="%H %aD")
 if [[ $(git diff|head -n 10) != "" ]] ; then
 	VERSION="${VERSION} modified!"
-fi 
+fi
 
-$CC $CFLAGS $SOURCE -DVERSION="\"$VERSION\"" -o md-real-io 
+$CC $CFLAGS $SOURCE -DVERSION="\"$VERSION\"" -o md-real-io

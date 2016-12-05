@@ -15,27 +15,17 @@
 //
 // Author: Julian Kunkel
 
-#ifndef MD_OPTION_H
-#define MD_OPTION_H
+#ifndef MD_PLUGIN_H
+#define MD_PLUGIN_H
 
-typedef enum{
-  OPTION_FLAG,
-  OPTION_OPTIONAL_ARGUMENT,
-  OPTION_REQUIRED_ARGUMENT
-} option_value_type;
+struct md_plugin{
+  char * name;
+  int (*prepare_testdir)(char * dir);
+  int (*purge_testdir)(char * dir);
+};
 
-typedef struct{
-  char shortVar;
-  char * longVar;
-  char * help;
-
-  option_value_type arg;
-  char type;  // data type
-  void * variable;
-} option_help;
-
-#define LAST_OPTION {0, 0, 0, (option_value_type) 0, 0, NULL}
-
-void parseOptions(int argc, char ** argv, option_help * args);
+#ifdef MD_PLUGIN_POSIX
+#include <plugins/md-posix.h>
+#endif
 
 #endif

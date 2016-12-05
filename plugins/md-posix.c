@@ -15,27 +15,24 @@
 //
 // Author: Julian Kunkel
 
-#ifndef MD_OPTION_H
-#define MD_OPTION_H
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-typedef enum{
-  OPTION_FLAG,
-  OPTION_OPTIONAL_ARGUMENT,
-  OPTION_REQUIRED_ARGUMENT
-} option_value_type;
+#include <plugins/md-posix.h>
 
-typedef struct{
-  char shortVar;
-  char * longVar;
-  char * help;
 
-  option_value_type arg;
-  char type;  // data type
-  void * variable;
-} option_help;
+static int prepare_testdir(char * dir){
+  return mkdir(dir, 0755);
+}
 
-#define LAST_OPTION {0, 0, 0, (option_value_type) 0, 0, NULL}
+static int purge_testdir(char * dir){
+  return rmdir(dir);
+}
 
-void parseOptions(int argc, char ** argv, option_help * args);
 
-#endif
+struct md_plugin md_plugin_posix = {
+  "posix",
+  prepare_testdir,
+  purge_testdir,
+};
