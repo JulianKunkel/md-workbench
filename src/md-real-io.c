@@ -34,9 +34,7 @@
 
 
 struct md_plugin * md_plugin_list[] = {
-#ifdef MD_PLUGIN_POSIX
 & md_plugin_posix,
-#endif
 #ifdef MD_PLUGIN_POSTGRES
 & md_plugin_postgres,
 #endif

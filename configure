@@ -1,0 +1,105 @@
+#!/bin/bash
+
+PARAMETERS="$0 $*"
+CMAKEFLAGS=
+SRCDIR=$(dirname $(readlink -f $0))/
+CURPATH="$PWD"
+
+function help(){
+	echo ""
+	echo "MD-REAL-IO uses the CMake (http://www.cmake.org) buildsystem instead of configure."
+	echo "CMake uses different options than configure, but you can use this script to "
+	echo "specify them in the traditional way and get the equivalent cmake command."
+	echo "Use the following options to change default paths."
+	echo "--prefix=<dir>           : installation prefix"	
+	echo
+	echo "Optional:"
+	echo "--build-dir=<dir>        : directory in which to build"
+	echo "--debug                  : build with debug flags"
+	echo "--verbose                : output the command but do not execute it"
+	echo "--reconfigure            : run configure again with the parameters used the last time"
+	echo "--with-mpicc=<file>      : path to the MPI C compiler"
+	echo "--with-libpq=<file>      : path to libpq necessary for the postgres plugin"
+	echo "--with-mongoc=<file>     : path to mongoc library necessary for the mongodb plugin"
+	echo
+}
+
+buildDIR="build"
+
+function reconfigure(){
+	if [[ ! -e "configure.log" ]] ; then
+		echo "Error, didn't run configure before!" ;
+		exit 1
+	fi
+	$(cat configure.log)
+	exit $?
+}
+
+set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,plantuml-jar-dir:,with-mpicc:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
+test $# -lt 1  && exit 1
+while test $# -gt 0
+do
+	case "$1" in
+		--help) help; exit;;
+		--reconfigure) reconfigure;;
+		--version) cmake --version; exit;;
+		--prefix) prefix="$2"; shift;;
+		--debug) debug="yes"; ;;
+		--with-cc) ccbin="$2"; shift;;
+		--with-mpicc) mpicc="$2"; shift;;
+		--with-libpq) libpq="$2"; shift;;
+		--with-mongoc) mongoc="$2"; shift;;
+		--build-dir) buildDIR="$2"; shift;;
+		--verbose) VERBOSE="YES";;
+                -V) VERBOSE="YES";;
+		--) ;;
+		*) echo "Unknown option $1"; exit 1;;
+	esac
+	shift
+done
+
+echo $PARAMETERS > configure.log
+
+TARGET_DIR="/usr/local"
+
+if test -n "$debug"; then
+	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=debug"
+else
+	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=release"
+fi
+
+if test -n "$prefix"; then
+	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_INSTALL_PREFIX:PATH=$prefix"
+	TARGET_DIR="$prefix"
+fi
+if test -n "$ccbin"; then
+	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_C_COMPILER:FILEPATH=$ccbin"
+fi
+if test -n "$mpicc"; then
+	CMAKEFLAGS="$CMAKEFLAGS -DMPI_C_COMPILER:FILEPATH=$mpicc"
+fi
+
+if test -n "$libpq"; then
+	export PKG_CONFIG_PATH=$libpq/lib/pkgconfig/:$PKG_CONFIG_PATH
+fi
+if test -n "$mongoc"; then
+	export PKG_CONFIG_PATH=$mongoc/lib/pkgconfig/:$PKG_CONFIG_PATH
+fi
+
+
+# pkg-config --list-all
+
+COMMAND="mkdir -p $buildDIR && cd $buildDIR && echo $PARAMETERS > configure.log ; rm CMakeCache.txt 2>/dev/null; cmake $CMAKEFLAGS $SRCDIR"
+
+if [[ "$VERBOSE" == "YES" ]] ; then
+	echo "Your current configure options translate more or less to:"
+	echo "$COMMAND"
+	exit 0
+else
+	eval "$COMMAND"
+	ERROR="$?"
+	if [[ "$ERROR" != 0 ]] ; then
+		echo "An error occurred during the configuration, aborting!"
+		exit 1
+	fi
+fi
