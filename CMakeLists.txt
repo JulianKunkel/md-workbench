@@ -51,21 +51,29 @@ endif(DOXYGEN_FOUND)
 
 
 ## identify which plugins are compilable
-set(PLUGINS "${PLUGIN_DIR}/md-posix.c" CACHE FILEPATH "enabled plugins")
+set(PLUGINS "${PLUGIN_DIR}/md-posix.c" "${PLUGIN_DIR}/md-mpi.c")
+add_definitions("-DMD_PLUGIN_MPIIO")
+
+# GIT VERSIONs:
+execute_process(COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE GIT_BRANCH OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+execute_process(COMMAND git log -1 --format=%h
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}  OUTPUT_VARIABLE GIT_COMMIT_HASH  OUTPUT_STRIP_TRAILING_WHITESPACE )
 
 if(MONGOC_VERSION)
   #MESSAGE("")
   set(PLUGINS "${PLUGIN_DIR}/md-mongo.c" ${PLUGINS})
-  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMD_PLUGIN_MONGO")
+  add_definitions("-DMD_PLUGIN_MONGO")
 endif()
 if(LIBPQ_VERSION)
   #MESSAGE("")
   set(PLUGINS "${PLUGIN_DIR}/md-postgres.c" ${PLUGINS})
-  set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMD_PLUGIN_POSTGRES")
+  add_definitions("-DMD_PLUGIN_POSTGRES")
 endif()
 
+set(PLUGINS ${PLUGINS} CACHE FILEPATH "enabled plugins")
 
 SUBDIRS (src)
 
 feature_summary(WHAT ALL)
-

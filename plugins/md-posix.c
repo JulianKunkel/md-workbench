@@ -77,7 +77,7 @@ static int write_file(char * filename, char * buf, size_t file_size,  char * pre
   fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
   if (fd == -1) return MD_ERROR_CREATE;
   ret = write(fd, buf, file_size);
-  ret = (ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
+  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
   close(fd);
   return ret;
 }
@@ -90,7 +90,7 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
   fd = open(filename, O_RDWR);
   if (fd == -1) return MD_ERROR_FIND;
   ret = read(fd, buf, file_size);
-  ret = (ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
+  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
   close(fd);
   return ret;
 }
@@ -98,6 +98,7 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
 static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
   struct stat file_stats;
   int ret;
+  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
   ret = stat(filename, & file_stats);
   if ( ret != 0 ){
     return MD_ERROR_FIND;

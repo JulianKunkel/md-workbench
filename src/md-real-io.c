@@ -31,10 +31,13 @@
 #include <plugins/md-posix.h>
 #include <plugins/md-postgres.h>
 #include <plugins/md-mongo.h>
-
+#include <plugins/md-mpi.h>
 
 struct md_plugin * md_plugin_list[] = {
 & md_plugin_posix,
+#ifdef MD_PLUGIN_MPIIO
+& md_plugin_mpi,
+#endif
 #ifdef MD_PLUGIN_POSTGRES
 & md_plugin_postgres,
 #endif
@@ -44,9 +47,15 @@ struct md_plugin * md_plugin_list[] = {
 NULL
 };
 
+#define xstr(s) str(s)
+#define str(s) #s
 
 #ifndef VERSION
-  #define VERSION "UNKNOWN"
+#ifdef GIT_BRANCH
+#define VERSION xstr(GIT_COMMIT_HASH)"@"xstr(GIT_BRANCH)
+#else
+#define VERSION "UNKNOWN"
+#endif
 #endif
 
 struct md_plugin * plugin = NULL;
