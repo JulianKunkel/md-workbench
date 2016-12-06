@@ -120,7 +120,6 @@ static int create_rank_dir(char * filename, char * prefix, int rank){
     }
     printf("\n");
     MPI_Info_free(& einfo);
-    return MD_NOOP;
   }
 
   if (use_posix_dirs){
