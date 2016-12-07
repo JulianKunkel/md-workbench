@@ -276,16 +276,16 @@ void run_cleanup(){
 }
 
 static void print_additional_thread_report_header(){
-  printf("/Pre CreatedDirs CreateFiles ");
-  printf("\t/Bench Created Accessed");
-  printf("\t/Clean Deleted\n");
+  printf("P:CreatedSets\tCreatedObjs ");
+  printf("\tB:Created\tAccessed");
+  printf("\tC:Deleted\n");
 }
 
 static void print_additional_thread_reports(char * b){
   b += sprintf(b, "%d\t%.2fs\t\t%.2fs\t\t%.2fs\t", rank, t_precreate_i, t_benchmark_i, t_cleanup_i);
   b += sprintf(b, "     %d(%d)\t%d(%d)", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
-  b +=  sprintf(b, "\t\t\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
-  b += sprintf(b, "\t\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
+  b +=  sprintf(b, "\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
+  b += sprintf(b, "\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
 }
 
 static void prepare_report(){
