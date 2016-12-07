@@ -74,6 +74,7 @@ int verbosity = 0;
 int thread_report = 0;
 int skip_cleanup = 0;
 int cleanup_only = 0;
+int print_pattern = 0;
 
 int ignore_precreate_errors = 0;
 int rank;
@@ -162,6 +163,22 @@ void run_precreate(){
   free(buf);
 }
 
+
+static void print_access_pattern(){
+  if (rank == 0){
+     printf("I/O pattern\n");
+     for(int n=0; n < size; n++){
+       for(int d=0; d < dirs; d++){
+         int writeRank = (n + offset * (d+1)) % size;
+         int readRank = (n - offset * (d+1)) % size;
+         readRank = readRank < 0 ? readRank + size : readRank;
+         printf("%d: write: %d read: %d\n", n, writeRank, readRank);
+       }
+    }
+  }
+}
+
+
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
 void run_benchmark(){
   char filename[FILENAME_MAX];
@@ -171,9 +188,9 @@ void run_benchmark(){
 
   for(int f=0; f < num; f++){
     for(int d=0; d < dirs; d++){
-      int curRankFolder = (rank + offset * d) % size;
+      int writeRank = (rank + offset * (d+1)) % size;
 
-      ret = plugin->write_file(filename, buf, file_size,  dir, curRankFolder, d, precreate + f);
+      ret = plugin->write_file(filename, buf, file_size,  dir, writeRank, d, precreate + f);
       if (verbosity){
         printf("%d Write %s \n", rank, filename);
       }
@@ -192,8 +209,9 @@ void run_benchmark(){
         }
       }
 
-      int nextRank = (rank + offset * (d+1)) % size;
-      ret = plugin->stat_file(filename, dir, nextRank, d, f, file_size);
+      int readRank = (rank - offset * (d+1)) % size;
+      readRank = readRank < 0 ? readRank + size : readRank;
+      ret = plugin->stat_file(filename, dir, readRank, d, f, file_size);
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
         b_file_access_errors++;
@@ -204,7 +222,7 @@ void run_benchmark(){
         printf("%d Access %s \n", rank, filename);
       }
 
-      ret = plugin->read_file(filename, buf, file_size,  dir, nextRank, d, f);
+      ret = plugin->read_file(filename, buf, file_size, dir, readRank, d, f);
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_ERROR_FIND){
@@ -219,7 +237,7 @@ void run_benchmark(){
         b_file_accessed++;
       }
 
-      plugin->delete_file(filename, dir, nextRank, d, f);
+      plugin->delete_file(filename, dir, readRank, d, f);
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret != MD_SUCCESS){
@@ -286,9 +304,9 @@ static void prepare_report(){
     CHECK_MPI_RET(ret)
     uint64_t sumErrors = errors[0] + errors[1] + errors[2] + errors[3] + errors[4];
 
-    printf("\nTotal runtime: %.3fs precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_all, t_precreate, t_benchmark, t_cleanup);
-    printf("Barrier time:        precreate: %.2fs benchmark: %.2fs cleanup: %.2fs\n", t_max[0], t_max[1], t_max[2]);
-    printf("Operations:          /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu dirs: %llu\n" , LLU correct[0], LLU correct[1], LLU correct[2], LLU correct[3], LLU correct[4], LLU correct[5]);
+    printf("\nTotal runtime:       %.3fs = %.2fs + %.2fs + %.2fs (precreate + benchmark + cleanup)\n", t_all, t_precreate, t_benchmark, t_cleanup);
+    printf("Barrier time:        %.2fs; %.2fs; %.2fs\n", t_max[0], t_max[1], t_max[2]);
+    printf("Operations:          sets: %llu objs: %llu; write: %llu read: %llu; objs: %llu sets: %llu\n" , LLU correct[0], LLU correct[1], LLU correct[2], LLU correct[3], LLU correct[4], LLU correct[5]);
 
     double v_pre = LLU correct[1] / (1024.0*1024) * file_size;
     double v_bench = LLU correct[2] / (1024.0*1024) * file_size;
@@ -297,13 +315,13 @@ static void prepare_report(){
       printf("Errors: %llu /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu\n", LLU sumErrors, LLU errors[0], LLU errors[1], LLU errors[2], LLU errors[3], LLU errors[4] );
     }
 
-    printf("\nCompound performance:\n");
+    printf("\nCompound performance for the phases:\n");
     if (! cleanup_only){
-      printf("Precreate: %.1f elements/s (dirs+files) %.1f MiB/s ops = (create dir, files, write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
-      printf("Benchmark: %.1f iters/s %.1f MiB/s iteration = (write, stat, read, delete)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
+      printf("Precreate: %.1f elements/s (obj+sets) %.1f MiB/s - (create sets, objs and write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
+      printf("Benchmark: %.1f iters/s %.1f MiB/s - an iteration is (write new, stat, read and delete old)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
     }
     if (! skip_cleanup){
-      printf("Delete:    %.1f elements/s (dirs+files) ops = (delete dirs, files)\n", (correct[4]+correct[5]) / t_cleanup );
+      printf("Cleanup:   %.1f elements/s (sets+objs) - (delete objs and sets)\n", (correct[4]+correct[5]) / t_cleanup );
     }
 
   }else{ // rank != 0
@@ -340,12 +358,13 @@ static void prepare_report(){
 static option_help options [] = {
   {'T', "target", "Target identifier (directory) where to run the benchmark.", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
   {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & offset},
-  {'I', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & interface},
-  {'N', "num", "Number of I/O operations per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
-  {'P', "precreate", "Number of files to precreate per thread and directory.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
-  {'D', "dirs", "Number of directories.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
+  {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & interface},
+  {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
+  {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
+  {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
+  {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & print_pattern},
 
-  {'F', "file-size", "File size for the created files.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
+  {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
 
   {0, "cleanup-only", "Cleanup data only, necessary if a benchmark aborts", OPTION_FLAG, 'd', & cleanup_only},
   {0, "skip-cleanup-phase", "Skip the cleanup phase", OPTION_FLAG, 'd', & skip_cleanup},
@@ -415,6 +434,12 @@ int main(int argc, char ** argv){
     }
   }
 
+  if(print_pattern){
+     print_access_pattern();
+     MPI_Finalize();
+     exit(0);
+  }
+
   ret = plugin->initialize();
   if (ret != MD_SUCCESS){
     MPI_Abort(MPI_COMM_WORLD, 1);
@@ -426,7 +451,7 @@ int main(int argc, char ** argv){
     if(num > precreate){
       printf("WARNING: num > precreate, this may cause the situation that no files are available to read\n");
     }
-    printf("MD-REAL-IO total files: %zu (version: %s)\n", total_files_count, VERSION);
+    printf("MD-REAL-IO total objects created: %zu (version: %s)\n", total_files_count, VERSION);
   }
 
   timer bench_start;
