@@ -418,9 +418,7 @@ int main(int argc, char ** argv){
 
   find_interface();
 
-  if (argc > parsed){
-    parseOptions(argc - parsed, argv + parsed, plugin->get_options(), & printhelp);
-  }
+  parseOptions(argc - parsed, argv + parsed, plugin->get_options(), & printhelp);
 
   if(printhelp != 0){
     if (rank == 0){
