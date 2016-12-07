@@ -11,7 +11,7 @@ function help(){
 	echo "CMake uses different options than configure, but you can use this script to "
 	echo "specify them in the traditional way and get the equivalent cmake command."
 	echo "Use the following options to change default paths."
-	echo "--prefix=<dir>           : installation prefix"	
+	echo "--prefix=<dir>           : installation prefix"
 	echo
 	echo "Optional:"
 	echo "--build-dir=<dir>        : directory in which to build"
@@ -19,8 +19,9 @@ function help(){
 	echo "--verbose                : output the command but do not execute it"
 	echo "--reconfigure            : run configure again with the parameters used the last time"
 	echo "--with-mpicc=<file>      : path to the MPI C compiler"
-	echo "--with-libpq=<file>      : path to libpq necessary for the postgres plugin"
-	echo "--with-mongoc=<file>     : path to mongoc library necessary for the mongodb plugin"
+	echo "--with-libpq=<dir>      : path to libpq necessary for the postgres plugin"
+	echo "--with-mongoc=<dir>     : path to mongoc library necessary for the mongodb plugin"
+	echo "--with-libs3=<dir>      : path to libs3 library necessary for the Amazon S3 plugin"
 	echo
 }
 
@@ -35,7 +36,7 @@ function reconfigure(){
 	exit $?
 }
 
-set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,plantuml-jar-dir:,with-mpicc:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
+set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-libs3:,plantuml-jar-dir:,with-mpicc:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
 test $# -lt 1  && exit 1
 while test $# -gt 0
 do
@@ -49,6 +50,7 @@ do
 		--with-mpicc) mpicc="$2"; shift;;
 		--with-libpq) libpq="$2"; shift;;
 		--with-mongoc) mongoc="$2"; shift;;
+		--with-libs3) libs3="$2"; shift;;
 		--build-dir) buildDIR="$2"; shift;;
 		--verbose) VERBOSE="YES";;
                 -V) VERBOSE="YES";;
@@ -85,7 +87,9 @@ fi
 if test -n "$mongoc"; then
 	export PKG_CONFIG_PATH=$mongoc/lib/pkgconfig/:$PKG_CONFIG_PATH
 fi
-
+if test -n "$libs3"; then
+	export PKG_CONFIG_PATH=$libs3/lib/pkgconfig/:$PKG_CONFIG_PATH
+fi
 
 # pkg-config --list-all
 

@@ -29,6 +29,18 @@ pkg_search_module(LIBPQ libpq)
 pkg_check_modules(LIBPQ QUIET pq)
 find_package_handle_standard_args(LIBPQ  DEFAULT_MSG  LIBPQ_LIBRARIES  LIBPQ_INCLUDE_DIRS)
 
+pkg_search_module(LIBS3 libs3)
+pkg_check_modules(LIBS3 QUIET s3)
+
+if(NOT LIBS3_VERSION)
+  find_library(LIBS3_LIBRARIES NAMES s3)
+  find_path(LIBS3_INCLUDE_DIRS NAMES libs3.h)
+  if(LIBS3_INCLUDE_DIRS)
+    set(LIBS3_VERSION 1.0)
+  endif()
+endif()
+
+find_package_handle_standard_args(LIBS3  DEFAULT_MSG  LIBS3_LIBRARIES  LIBS3_INCLUDE_DIRS)
 
 include_directories("${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}")
 
@@ -70,6 +82,11 @@ if(LIBPQ_VERSION)
   #MESSAGE("")
   set(PLUGINS "${PLUGIN_DIR}/md-postgres.c" ${PLUGINS})
   add_definitions("-DMD_PLUGIN_POSTGRES")
+endif()
+if(LIBS3_VERSION)
+  #MESSAGE("")
+  set(PLUGINS "${PLUGIN_DIR}/md-s3.c" ${PLUGINS})
+  add_definitions("-DMD_PLUGIN_S3")
 endif()
 
 set(PLUGINS ${PLUGINS} CACHE FILEPATH "enabled plugins")

@@ -31,6 +31,7 @@
 #include <plugins/md-posix.h>
 #include <plugins/md-postgres.h>
 #include <plugins/md-mongo.h>
+#include <plugins/md-s3.h>
 #include <plugins/md-mpi.h>
 
 struct md_plugin * md_plugin_list[] = {
@@ -43,6 +44,9 @@ struct md_plugin * md_plugin_list[] = {
 #endif
 #ifdef MD_PLUGIN_MONGO
 & md_plugin_mongo,
+#endif
+#ifdef MD_PLUGIN_S3
+& md_plugin_s3,
 #endif
 NULL
 };
