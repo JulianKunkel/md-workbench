@@ -276,6 +276,8 @@ void run_cleanup(){
 }
 
 static void print_additional_thread_report_header(){
+  printf("\nIndividual report:\n");
+  printf("Rank\tPrecreate\tBenchmark\tCleanup\t");
   printf("P:CreatedSets\tCreatedObjs ");
   printf("\tB:Created\tAccessed");
   printf("\tC:Deleted\n");
@@ -338,7 +340,6 @@ static void prepare_report(){
     char thread_buffer[4096];
 
     if (rank == 0){
-      printf("\nRank\tPrecreate\tBenchmark\tCleanup\t");
       print_additional_thread_report_header();
 
       print_additional_thread_reports(thread_buffer);
