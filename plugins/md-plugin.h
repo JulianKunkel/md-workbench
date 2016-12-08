@@ -1,4 +1,4 @@
-// This file is part of MD-REAL-IO.
+// This object is part of MD-REAL-IO.
 //
 // MD-REAL-IO is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
@@ -29,21 +29,25 @@ struct md_plugin{
   int (*finalize)();
 
   // rank0 calls these methods to create / purge the initial setup:
-  int (*prepare_testdir)(char * dir);
-  int (*purge_testdir)(char * dir);
+  int (*prepare_global)();
+  int (*purge_global)();
 
-  // each process creates / deletes a set of entities
-  int (*create_rank_dir)(char * out_filename, char * dir, int rank);
-  int (*rm_rank_dir)(char * out_filename, char * dir, int rank);
+  // each process may need to create / delete a set of dat sets
+  int (*def_dset_name)(char * out_name, int n, int d);
 
-  int (*create_dir)(char * out_filename, char * prefix, int rank, int iteration);
-  int (*rm_dir)(char * out_filename, char * prefix, int rank, int iteration);
+  // before calling these functions, the name must be set using def_dset_name
+  int (*create_dset)(char * name);
+  int (*rm_dset)(char * name);
 
+  // n  == rank, d == data set id, i = iteration
+  int (*def_obj_name)(char * out_name, int n, int d, int i);
+
+  // before calling these functions, use def_obj_name to set the object name
   // actually used during the benchmark to access and delete objects
-  int (*write_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
-  int (*read_file)(char * out_filename, char * buf, size_t size, char * prefix, int rank, int dir, int iteration);
-  int (*stat_file)(char * out_filename, char * prefix, int rank, int dir, int iteration, int file_size);
-  int (*delete_file)(char * out_filename, char * prefix, int rank, int dir, int iteration);
+  int (*write_obj)(char * name, char * buf, size_t size);
+  int (*read_obj)(char * name, char * buf, size_t size);
+  int (*stat_obj)(char * name, size_t object_size);
+  int (*delete_obj)(char * name);
 };
 
 enum MD_ERROR{

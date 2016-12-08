@@ -30,10 +30,11 @@ static char * hint_list = NULL;
 static int use_existing_dirs = 0;
 static int use_posix_dirs = 0;
 static int show_hint_list = 0;
+static char * dir = "out";
 static MPI_Info info;
 
-
 static option_help options [] = {
+  {'D', "root-dir", "Root directory", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
   {'H', "hints", "List of MPI hints in the format: X=Y|Z=W|...", OPTION_OPTIONAL_ARGUMENT, 's', & hint_list},
   {'S', "show-hints", "Show the einfo MPI hints in the format: X=Y|Z=W|...", OPTION_FLAG, 'd', & show_hint_list},
   {'d', "use-existing-dirs", "Use pre-created directories (since MPI does not support directories); otherwise only a single directory is used", OPTION_FLAG, 'd', & use_existing_dirs},

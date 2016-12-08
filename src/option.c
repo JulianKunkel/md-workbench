@@ -128,7 +128,7 @@ void print_help(option_help * args, int is_plugin){
     }
   }
   if (optionalArgs){
-    printf(" [Optional Args]");
+    //printf(" [Optional Args]");
   }
   if (! is_plugin){
     printf(" -- <Plugin options, see below>\n");
