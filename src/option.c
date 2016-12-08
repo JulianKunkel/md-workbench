@@ -139,6 +139,81 @@ void print_help(option_help * args, int is_plugin){
   print_help_section(args, OPTION_OPTIONAL_ARGUMENT, "Optional arguments");
 }
 
+
+static int print_option_value(option_help * o){
+  int pos = 0;
+  if (o->arg == OPTION_OPTIONAL_ARGUMENT || o->arg == OPTION_REQUIRED_ARGUMENT){
+    assert(o->variable != NULL);
+
+    switch(o->type){
+      case('F'):{
+        pos += printf("=%.14f ", *(double*) o->variable);
+        break;
+      }
+      case('f'):{
+        pos += printf("=%.6f ", (double) *(float*) o->variable);
+        break;
+      }
+      case('d'):{
+        pos += printf("=%d ", *(int*) o->variable);
+        break;
+      }
+      case('s'):{
+        if ( *(char**) o->variable != NULL &&  ((char**) o->variable)[0][0] != 0 ){
+          pos += printf("=%s", *(char**) o->variable);
+        }else{
+          pos += printf("=NULL");
+        }
+        break;
+      }
+      case('c'):{
+        pos += printf("=%c", *(char*) o->variable);
+        break;
+      }
+      case('l'):{
+        pos += printf("=%lld", *(long long*) o->variable);
+        break;
+      }
+    }
+  }else{
+    //printf(" ");
+  }
+
+  return pos;
+}
+
+
+static void print_current_option_section(option_help * args, option_value_type type){
+  option_help * o;
+  for(o = args; o->shortVar != 0 || o->longVar != 0 ; o++){
+    if (o->arg == type){
+      int pos = 0;
+      if (o->arg == OPTION_FLAG && (*(int*)o->variable) == 0){
+        continue;
+      }
+      printf("\t");
+
+      if(o->shortVar != 0 && o->longVar != 0){
+        pos += printf("%s", o->longVar);
+      }else if(o->shortVar != 0){
+        pos += printf("%c", o->shortVar);
+      }else if(o->longVar != 0){
+        pos += printf("%s", o->longVar);
+      }
+
+      pos += print_option_value(o);
+      printf("\n");
+    }
+  }
+}
+
+
+void print_current_options(option_help * args){
+  print_current_option_section(args, OPTION_REQUIRED_ARGUMENT);
+  print_current_option_section(args, OPTION_OPTIONAL_ARGUMENT);
+  print_current_option_section(args, OPTION_FLAG);
+}
+
 int parseOptions(int argc, char ** argv, option_help * args, int * printhelp){
   int error = 0;
   int requiredArgsSeen = 0;

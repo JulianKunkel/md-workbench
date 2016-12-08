@@ -111,6 +111,7 @@ struct benchmark_options{
   int process_report;
   int print_pattern;
   int print_detailed_stats;
+  int quiet_output;
 
   int ignore_precreate_errors;
   int rank;
@@ -126,7 +127,7 @@ void init_options(){
   o.precreate = 3000;
   o.dset_count = 10;
   o.offset = 1;
-  o.iterations = 1;
+  o.iterations = 3;
   o.file_size = 3900;
 }
 
@@ -141,24 +142,26 @@ static int sum_err(phase_stat_t * p){
 static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
   const double tp = (uint64_t)(p->obj_create.suc + p->obj_read.suc) * o.file_size / p->t_incl_barrier / 1024 / 1024;
 
+  const int errs = sum_err(p);
+
   if (o.print_detailed_stats){
     sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, p->t_incl_barrier, tp);
 
-    int errs = sum_err(p);
     if (errs > 0){
       sprintf(buff, "%s err\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d", name, p->dset_name.err, p->dset_create.err,  p->dset_delete.err, p->obj_name.err, p->obj_create.err, p->obj_read.err, p->obj_stat.err, p->obj_delete.err);
     }
   }else{
+    int pos = 0;
     // single line
     switch(name[0]){
       case('b'):
-        sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
           p->obj_create.suc,
           p->obj_create.suc / p->t_incl_barrier,
           tp);
         break;
       case('p'):
-        sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
           p->dset_create.suc,
           p->obj_create.suc,
           p->dset_create.suc / p->t_incl_barrier,
@@ -166,15 +169,23 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
           tp);
         break;
       case('c'):
-        sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, p->t_incl_barrier,
           p->obj_delete.suc,
           p->dset_delete.suc,
           p->obj_delete.suc / p->t_incl_barrier,
           p->dset_delete.suc / p->t_incl_barrier);
         break;
       default:
-        sprintf(buff, "%s: unknown phase", name);
+        pos = sprintf(buff, "%s: unknown phase", name);
       break;
+    }
+    if(! o.quiet_output || errs > 0){
+      pos = pos + sprintf(buff + pos, " (%d errs", errs);
+      if(errs > 0){
+        sprintf(buff + pos, "!!!)" );
+      }else{
+        sprintf(buff + pos, ")" );
+      }
     }
   }
 }
@@ -192,7 +203,7 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
   // reduce timers
   ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
-  ret = MPI_Reduce(& p->dset_name, & g_stat.dset_name, 2*(3+5), MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+  ret = MPI_Reduce(& p->dset_name, & g_stat.dset_name, 2*(3+5), MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
 
   if (o.rank == 0){
@@ -409,6 +420,7 @@ static option_help options [] = {
   {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
   {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
   {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
+  {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
   {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
   {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & o.print_pattern},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
@@ -509,8 +521,8 @@ int main(int argc, char ** argv){
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  size_t total_obj_count = o.dset_count * (size_t) (o.num + o.precreate) * o.size;
-  if (o.rank == 0){
+  size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
+  if (o.rank == 0 && ! o.quiet_output){
     printf("MD-REAL-IO total objects: %zu (version: %s) time: ", total_obj_count, VERSION);
     printTime();
     if(o.num > o.precreate){
@@ -518,12 +530,22 @@ int main(int argc, char ** argv){
     }
   }
 
+
+  if ( o.rank == 0 && ! o.quiet_output ){
+    // print the set output options
+    print_current_options(options);
+    printf("\n");
+    print_current_options(o.plugin->get_options());
+
+    printf("\n");
+  }
+
   timer bench_start;
   start_timer(& bench_start);
   timer tmp;
   phase_stat_t phase_stats;
 
-  if(o.rank == 0 && o.print_detailed_stats){
+  if(o.rank == 0 && o.print_detailed_stats && ! o.quiet_output){
     print_detailed_stat_header();
   }
 
@@ -578,7 +600,7 @@ int main(int argc, char ** argv){
   if (ret != MD_SUCCESS){
     printf("Error while finalization of module\n");
   }
-  if (o.rank == 0){
+  if (o.rank == 0 && ! o.quiet_output){
     printf("Total runtime: %.0fs time: ", t_all);
     printTime();
   }
