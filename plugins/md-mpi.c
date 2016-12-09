@@ -147,7 +147,7 @@ static int rm_dset(char * filename){
   return MD_NOOP;
 }
 
-static int write_obj(char * filename, char * buf, size_t file_size){
+static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
   int ret;
   MPI_File fh;
   ret = MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_CREATE | MPI_MODE_WRONLY, info, & fh);
@@ -169,7 +169,7 @@ static int write_obj(char * filename, char * buf, size_t file_size){
 
 
 
-static int read_obj(char * filename, char * buf, size_t file_size){
+static int read_obj(char * dirname, char * filename, char * buf, size_t file_size){
   int ret;
   MPI_File fh;
   ret = MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_RDONLY, info, & fh);
@@ -189,7 +189,7 @@ static int read_obj(char * filename, char * buf, size_t file_size){
   return MD_SUCCESS;
 }
 
-static int stat_obj(char * filename, size_t file_size){
+static int stat_obj(char * dirname, char * filename, size_t file_size){
   int ret;
   MPI_File fh;
   ret = MPI_File_open(MPI_COMM_SELF, filename, MPI_MODE_RDONLY, info, & fh);
@@ -200,13 +200,13 @@ static int stat_obj(char * filename, size_t file_size){
   MPI_Offset size;
   ret = MPI_File_get_size(fh, & size);
   MPI_File_close(& fh);
-  if (ret != MPI_SUCCESS  || size != file_size){
+  if (ret != MPI_SUCCESS  || (size_t) size != file_size){
     return MD_ERROR_UNKNOWN;
   }
   return MD_SUCCESS;
 }
 
-static int delete_obj(char * filename){
+static int delete_obj(char * dirname, char * filename){
   int ret = MPI_File_delete(filename, MPI_INFO_NULL);
   return ret == MPI_SUCCESS ? MD_SUCCESS : MD_ERROR_UNKNOWN;
 }

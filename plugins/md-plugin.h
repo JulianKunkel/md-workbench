@@ -44,10 +44,10 @@ struct md_plugin{
 
   // before calling these functions, use def_obj_name to set the object name
   // actually used during the benchmark to access and delete objects
-  int (*write_obj)(char * name, char * buf, size_t size);
-  int (*read_obj)(char * name, char * buf, size_t size);
-  int (*stat_obj)(char * name, size_t object_size);
-  int (*delete_obj)(char * name);
+  int (*write_obj)(char * dset, char * name, char * buf, size_t size);
+  int (*read_obj)(char * dset, char * name, char * buf, size_t size);
+  int (*stat_obj)(char * dset, char * name, size_t object_size);
+  int (*delete_obj)(char * dset, char * name);
 };
 
 enum MD_ERROR{

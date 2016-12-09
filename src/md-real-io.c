@@ -229,13 +229,14 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
 
 void run_precreate(phase_stat_t * s){
   char dset[4096];
+  char obj_name[4096];
   int ret;
 
   for(int i=0; i < o.dset_count; i++){
     ret = o.plugin->def_dset_name(dset, o.rank, i);
     if (ret != MD_SUCCESS){
       if (! o.ignore_precreate_errors){
-        printf("Error defining the dataset name!\n");
+        printf("Error defining the dataset name\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
       s->dset_name.err++;
@@ -250,7 +251,7 @@ void run_precreate(phase_stat_t * s){
     }else{
       s->dset_create.err++;
       if (! o.ignore_precreate_errors){
-        printf("Error while creating the directory %s\n", dset);
+        printf("Error while creating the dset: %s\n", dset);
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
     }
@@ -261,18 +262,19 @@ void run_precreate(phase_stat_t * s){
 
   // create the obj
   for(int d=0; d < o.dset_count; d++){
+    ret = o.plugin->def_dset_name(dset, o.rank, d);
     for(int f=0; f < o.precreate; f++){
-      ret = o.plugin->def_obj_name(dset, o.rank, d, f);
+      ret = o.plugin->def_obj_name(obj_name, o.rank, d, f);
       if (ret != MD_SUCCESS){
         s->dset_name.err++;
         if (! o.ignore_precreate_errors){
-          printf("Error while creating the obj %s\n", dset);
+          printf("Error while creating the obj name\n");
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
         s->obj_name.err++;
         continue;
       }
-      ret = o.plugin->write_obj(dset, buf, o.file_size);
+      ret = o.plugin->write_obj(obj_name, obj_name, buf, o.file_size);
       if (ret == MD_NOOP){
         // do not increment any counter
       }else if (ret == MD_SUCCESS){
@@ -280,7 +282,7 @@ void run_precreate(phase_stat_t * s){
       }else{
         s->obj_create.err++;
         if (! o.ignore_precreate_errors){
-          printf("Error while creating the obj %s\n", dset);
+          printf("Error while creating the obj: %s\n", obj_name);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
       }
@@ -308,6 +310,7 @@ static void print_access_pattern(){
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
 void run_benchmark(phase_stat_t * s, int start_index){
   char dset[4096];
+  char obj_name[4096];
   int ret;
   char * buf = malloc(o.file_size);
   memset(buf, o.rank % 256, o.file_size);
@@ -316,16 +319,17 @@ void run_benchmark(phase_stat_t * s, int start_index){
     for(int d=0; d < o.dset_count; d++){
       int writeRank = (o.rank + o.offset * (d+1)) % o.size;
       const int prevFile = f + start_index;
-      ret = o.plugin->def_obj_name(dset, writeRank, d, o.precreate + prevFile);
+      ret = o.plugin->def_obj_name(obj_name, writeRank, d, o.precreate + prevFile);
       if (ret != MD_SUCCESS){
         s->obj_name.err++;
         continue;
       }
+      ret = o.plugin->def_dset_name(dset, writeRank, d);
 
       if (o.verbosity > 2)
         printf("%d Create %s \n", o.rank, dset);
 
-      ret = o.plugin->write_obj(dset, buf, o.file_size);
+      ret = o.plugin->write_obj(obj_name, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
       }else if (ret == MD_ERROR_CREATE){
@@ -342,12 +346,14 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
       int readRank = (o.rank - o.offset * (d+1)) % o.size;
       readRank = readRank < 0 ? readRank + o.size : readRank;
-      ret = o.plugin->def_obj_name(dset, readRank, d, prevFile);
+      ret = o.plugin->def_obj_name(obj_name, readRank, d, prevFile);
       if (ret != MD_SUCCESS){
         s->obj_name.err++;
         continue;
       }
-      ret = o.plugin->stat_obj(dset, o.file_size);
+      ret = o.plugin->def_dset_name(dset, readRank, d);
+
+      ret = o.plugin->stat_obj(obj_name, obj_name, o.file_size);
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
           printf("Error while stating the obj: %s\n", dset);
@@ -359,7 +365,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity > 2){
         printf("%d Access %s \n", o.rank, dset);
       }
-      ret = o.plugin->read_obj(dset, buf, o.file_size);
+      ret = o.plugin->read_obj(obj_name, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
       }else if (ret == MD_NOOP){
@@ -373,7 +379,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
         continue;
       }
 
-      o.plugin->delete_obj(dset);
+      o.plugin->delete_obj(obj_name, obj_name);
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
       }else if (ret == MD_NOOP){
@@ -388,12 +394,15 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
 void run_cleanup(phase_stat_t * s, int start_index){
   char dset[4096];
+  char obj_name[4096];
   int ret;
 
   for(int d=0; d < o.dset_count; d++){
+    ret = o.plugin->def_dset_name(dset, o.rank, d);
+
     for(int f=0; f < o.precreate; f++){
-      ret = o.plugin->def_obj_name(dset, o.rank, d, f + o.num + start_index);
-      ret = o.plugin->delete_obj(dset);
+      ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + o.num + start_index);
+      ret = o.plugin->delete_obj(dset, obj_name);
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_SUCCESS){
@@ -403,7 +412,6 @@ void run_cleanup(phase_stat_t * s, int start_index){
       }
     }
 
-    ret = o.plugin->def_dset_name(dset, o.rank, d);
     ret = o.plugin->rm_dset(dset);
     if (ret == MD_SUCCESS){
       s->dset_delete.suc++;
@@ -444,6 +452,10 @@ static void find_interface(){
   while(*p_it != NULL){
     if(is_list){
       printf("%s ", (*p_it)->name);
+    }
+    if((*p_it)->name == NULL){
+      printf("Error, module \"%s\" not linked properly\n", o.interface);
+      MPI_Abort(MPI_COMM_WORLD, 1);
     }
     if(strcmp((*p_it)->name, o.interface) == 0) {
       // got it

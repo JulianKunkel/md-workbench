@@ -16,6 +16,14 @@
 // Author: Julian Kunkel
 
 #include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 #ifdef ESM
 typedef clock64_t timer;
@@ -63,4 +71,62 @@ static double stop_timer(timer t1) {
     start_timer(& end);
     return time_to_double(time_diff(end, t1));
 }
+
+static long getRAMValue(char * what){
+        char buff[1024];
+
+        int fd = open("/proc/meminfo", O_RDONLY);
+        int ret = read(fd, buff, 1023);
+
+        buff[ret>1023 ? 1023: ret] = 0;
+
+        char * line = strstr(buff, what);
+
+	if (line == 0){
+		printf("Error %s not found in %s \n", what, buff);
+		exit(1);
+	}
+
+	line += strlen(what) + 1;
+
+
+        while(line[0] == ' '){
+                line++;
+        }
+
+        int pos = 0;
+        while(line[pos] != ' '){
+                pos++;
+        }
+        line[pos] = 0;
+
+        close(fd);
+
+        return atoi(line);
+}
+
+#define GET_FREE_RAM getRAMValue("\nMemFree:") + getRAMValue("\nCached:") + getRAMValue("\nBuffers:")
+
+void preallocate(long long int maxRAMinKB){
+	long long int currentRAMinKB = GET_FREE_RAM;
+
+	printf ("starting to malloc RAM currently \n %lld KiB => goal %lld KiB\n", currentRAMinKB, maxRAMinKB);
+
+	while(currentRAMinKB > maxRAMinKB){
+		long long int delta = currentRAMinKB - maxRAMinKB;
+		long long int toMalloc = (delta < 500 ? delta : 500) * 1024;
+
+		char * allocP = malloc(toMalloc);
+		if(allocP == 0){
+			printf("could not allocate more RAM - retrying - free:%lld \n", currentRAMinKB);
+			sleep(5);
+		}else{
+			memset(allocP, '1', toMalloc);
+		}
+		currentRAMinKB = GET_FREE_RAM;
+	}
+
+	printf ("Finished now \n %lld - %lld\n", currentRAMinKB, maxRAMinKB);
+}
+
 #endif

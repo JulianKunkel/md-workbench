@@ -162,7 +162,7 @@ static int print_option_value(option_help * o){
         if ( *(char**) o->variable != NULL &&  ((char**) o->variable)[0][0] != 0 ){
           pos += printf("=%s", *(char**) o->variable);
         }else{
-          pos += printf("=NULL");
+          pos += printf("=");
         }
         break;
       }

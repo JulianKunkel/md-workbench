@@ -76,7 +76,7 @@ static int rm_dset(char * filename){
   return rmdir(filename);
 }
 
-static int write_obj(char * filename, char * buf, size_t file_size){
+static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
   int ret;
   int fd;
   fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
@@ -88,7 +88,7 @@ static int write_obj(char * filename, char * buf, size_t file_size){
 }
 
 
-static int read_obj(char * filename, char * buf, size_t file_size){
+static int read_obj(char * dirname, char * filename, char * buf, size_t file_size){
   int fd;
   int ret;
   fd = open(filename, O_RDWR);
@@ -99,7 +99,7 @@ static int read_obj(char * filename, char * buf, size_t file_size){
   return ret;
 }
 
-static int stat_obj(char * filename, size_t file_size){
+static int stat_obj(char * dirname, char * filename, size_t file_size){
   struct stat file_stats;
   int ret;
   ret = stat(filename, & file_stats);
@@ -109,7 +109,7 @@ static int stat_obj(char * filename, size_t file_size){
   return MD_SUCCESS;
 }
 
-static int delete_obj(char * filename){
+static int delete_obj(char * dirname, char * filename){
   return unlink(filename);
 }
 

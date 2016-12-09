@@ -26,14 +26,18 @@ static char * password = "";
 static char * host = "localhost";
 static int port = 27017;
 
+static char * global_coll_name = "md_real_io";
+static mongoc_collection_t * global_collection = NULL; // global collection!
 static int collection_per_dir = 0;
+static int create_no_index = 0;
 
 static option_help options [] = {
   {'D', "database", "Database name, this temporary database will be used for the test.", OPTION_REQUIRED_ARGUMENT, 's', & database},
-  {'U', "user", "User name to access the database.", OPTION_REQUIRED_ARGUMENT, 's', & username},
+  {'U', "user", "User name to access the database.", OPTION_OPTIONAL_ARGUMENT, 's', & username},
   {'H', "host", "Host name.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
   {'p', "port", "Port.", OPTION_OPTIONAL_ARGUMENT, 'd', & port},
   {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 's', & password},
+  {'i', "no-index", "Create no index on the obj name.", OPTION_FLAG, 'd', & create_no_index},
   {'c', "use-collection-per-dir", "Create one collection per directory, otherwise a global collection is used", OPTION_FLAG, 'd', & collection_per_dir},
   LAST_OPTION
 };
@@ -49,10 +53,9 @@ static int init_dir_internal(char * dir_name){
   // create a dummy collection and document to make sure the object can be created
   bson_t *doc;
   bson_error_t error;
-  int ret;
   mongoc_collection_t * collection = mongoc_database_get_collection(mongo_db, dir_name);
   doc = bson_new ();
-  bson_append_utf8(doc, "_", 1, "empty", 5);
+  bson_append_utf8(doc, "_id", 3, "empty", 5);
 
   if (! mongoc_collection_insert (collection, MONGOC_INSERT_NONE, doc, NULL, &error)) {
     return MD_ERROR_UNKNOWN;
@@ -60,15 +63,15 @@ static int init_dir_internal(char * dir_name){
   bson_destroy (doc);
 
   // create index by name
-  doc = bson_new ();
-  bson_append_int32(doc, "file", 4, 1);
-  ret = mongoc_collection_create_index (collection, doc, NULL, &error);
-  bson_destroy (doc);
-
-  if(! ret){
-    printf("Error: %s\n", error.message);
+  if (! create_no_index){
+    //doc = bson_new ();
+    //bson_append_int32(doc, "obj", 3, 1);
+    //ret = mongoc_collection_create_index (collection, doc, NULL, &error);
+    //bson_destroy (doc);
+    //if(! ret){
+    //  printf("Error: %s\n", error.message);
+    //}
   }
-
   mongoc_collection_destroy (collection);
   return MD_SUCCESS;
 }
@@ -103,7 +106,11 @@ static int initialize(){
     current_pos += pos;
   }
   if (strlen(host) > 1){
-    pos = sprintf(current_pos, "@%s:%d", host, port);
+    if(strlen(username) > 1) {
+      pos = sprintf(current_pos, "@");
+      current_pos += pos;
+    }
+    pos = sprintf(current_pos, "%s:%d", host, port);
     current_pos += pos;
   }
 
@@ -123,108 +130,127 @@ static int initialize(){
     return MD_ERROR_UNKNOWN;
   }
 
-  return init_dir_internal("dummy");
+  if(! collection_per_dir){
+    global_collection = mongoc_database_get_collection(mongo_db, global_coll_name);
+  }
+  return MD_SUCCESS;
 }
 
 static int finalize(){
-  int ret = rm_dir_internal("dummy");
   mongoc_database_destroy(mongo_db);
   mongoc_client_destroy (client);
   mongoc_cleanup ();
 
-  return ret;
-}
-
-static int create_rank_dir(char * filename, char * prefix, int rank){
-  return MD_NOOP;
-}
-
-static int rm_rank_dir(char * filename, char * prefix, int rank){
-  return MD_NOOP;
-}
-
-static int prepare_testdir(char * dir){
   if(! collection_per_dir){
-    return init_dir_internal(dir);
+    mongoc_collection_destroy (global_collection);
   }
-  return MD_NOOP;
+
+  return MD_SUCCESS;
 }
 
-static int purge_testdir(char * dir){
-  if(! collection_per_dir){
-    return rm_dir_internal(dir);
-  }
-  return MD_NOOP;
-}
-
-static int create_dir(char * filename, char * prefix, int rank, int iteration){
+static int def_dset_name(char * out_name, int n, int d){
   if(collection_per_dir){
-    sprintf(filename, "%s_%d_%d", prefix, rank, iteration);
-    return init_dir_internal(filename);
-  }
-  return MD_NOOP;
-}
-
-static int rm_dir(char * filename, char * prefix, int rank, int iteration){
-  if(collection_per_dir){
-    sprintf(filename, "%s_%d_%d", prefix, rank, iteration);
-    return rm_dir_internal(filename);
-  }
-  return MD_NOOP;
-}
-
-static void construct_access(char * filename, mongoc_collection_t ** out_collection, bson_t ** out_doc, char * prefix, int rank, int dir, int iteration){
-  if(collection_per_dir){
-    sprintf(filename, "%s_%d_%d", prefix, rank, dir);
+    sprintf(out_name, "%d_%d", n, d);
   }else{
-    sprintf(filename, "%s", prefix);
+    sprintf(out_name, "%s", global_coll_name);
+  }
+  return MD_SUCCESS;
+}
+
+static int def_obj_name(char * out_name, int n, int d, int i){
+  if(collection_per_dir){
+    sprintf(out_name, "%d", i);
+  }else{
+    sprintf(out_name, "%d_%d_%d", n, d, i);
+  }
+  return MD_SUCCESS;
+}
+
+
+static int prepare_global(){
+  if(! collection_per_dir){
+    int ret = init_dir_internal(global_coll_name);
+    global_collection = mongoc_database_get_collection(mongo_db, global_coll_name);
+    return ret;
+  }
+  // make sure we can actually write to the database
+  return init_dir_internal("dummy");
+}
+
+static int purge_global(){
+  if(! collection_per_dir){
+    return rm_dir_internal(global_coll_name);
+  }
+
+  return rm_dir_internal("dummy");
+}
+
+static int create_dset(char * obj_name){
+  if(collection_per_dir){
+    return init_dir_internal(obj_name);
+  }
+  return MD_NOOP;
+}
+
+static int rm_dset(char * obj_name){
+  if(collection_per_dir){
+    return rm_dir_internal(obj_name);
+  }
+  return MD_NOOP;
+}
+
+static void construct_access(char * collname, char * obj_name, mongoc_collection_t ** out_collection, bson_t ** out_doc){
+  if(collection_per_dir){
+    *out_collection = mongoc_database_get_collection(mongo_db, collname);
+  }else{
+    *out_collection = global_collection;
   }
   bson_t *doc;
 
-  mongoc_collection_t * collection = mongoc_database_get_collection(mongo_db, filename);
-  doc = bson_new ();
-
+  doc = bson_new();
   //bson_oid_t oid;
   //bson_oid_init (&oid, NULL);
   //BSON_APPEND_OID(doc, "_id", &oid);
-
-  if(collection_per_dir){
-    sprintf(filename, "%d", iteration);
+  if(create_no_index){
+    bson_append_utf8(doc, "obj", 3, obj_name, strlen(obj_name));
   }else{
-    sprintf(filename, "%d/%d/%d", rank, dir, iteration);
+    bson_append_utf8(doc, "_id", 3, obj_name, strlen(obj_name));
   }
 
-  bson_append_utf8(doc, "file", 4, filename, strlen(filename));
-
-  *out_collection = collection;
   *out_doc = doc;
 }
 
-static int write_file(char * filename, char * buf, size_t file_size, char * prefix, int rank, int dir, int iteration){
+static void free_access(mongoc_collection_t * collection, bson_t * doc){
+  if(collection_per_dir){
+    mongoc_collection_destroy (collection);
+  }
+  bson_destroy (doc);
+}
+
+static int write_obj(char * collname, char * obj_name, char * buf, size_t obj_size){
   int ret = MD_SUCCESS;
   bson_t *doc;
   bson_error_t error;
   mongoc_collection_t * collection;
-  construct_access(filename, & collection, & doc, prefix, rank, dir, iteration);
+  construct_access(collname, obj_name, & collection, & doc);
 
-  if (! bson_append_binary (doc, "data", 4, BSON_SUBTYPE_BINARY, (const uint8_t*) buf, file_size)){
+  if (! bson_append_binary (doc, "data", 4, BSON_SUBTYPE_BINARY, (const uint8_t*) buf, obj_size)){
     ret = MD_ERROR_UNKNOWN;
   }
   if (ret == MD_SUCCESS && ! mongoc_collection_insert (collection, MONGOC_INSERT_NONE, doc, NULL, &error)) {
       ret = MD_ERROR_UNKNOWN;
   }
-  bson_destroy (doc);
-  mongoc_collection_destroy (collection);
+  free_access(collection, doc);
   return ret;
 }
 
 
-static int read_file(char * filename, char * buf, size_t file_size,  char * prefix, int rank, int dir, int iteration){
+static int read_obj(char * collname, char * obj_name, char * buf, size_t obj_size){
   int ret = MD_SUCCESS;
   bson_t *doc;
-  bson_error_t error;
+  //bson_error_t error;
   mongoc_collection_t * collection;
-  construct_access(filename, & collection, & doc, prefix, rank, dir, iteration);
+  construct_access(collname, obj_name, & collection, & doc);
 
   mongoc_cursor_t * cursor = mongoc_collection_find_with_opts(collection, doc, NULL, NULL);
 
@@ -235,10 +261,10 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
      while (bson_iter_next (&iter)) {
        if (strcmp(bson_iter_key (&iter), "data") == 0){
           const bson_value_t *value = bson_iter_value(&iter);
-          if( value->value.v_binary.data_len != file_size ){
+          if( value->value.v_binary.data_len != obj_size ){
             ret = MD_ERROR_UNKNOWN;
           }else{
-            memcpy(buf, value->value.v_binary.data, file_size);
+            memcpy(buf, value->value.v_binary.data, obj_size);
             break;
           }
        }
@@ -248,17 +274,16 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
   }
 
   mongoc_cursor_destroy (cursor);
-  bson_destroy (doc);
-  mongoc_collection_destroy (collection);
+  free_access(collection, doc);
   return ret;
 }
 
-static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
+static int stat_obj(char * collname, char * obj_name, size_t obj_size){
   int ret = MD_SUCCESS;
   bson_t *doc;
   bson_error_t error;
   mongoc_collection_t * collection;
-  construct_access(filename, & collection, & doc, prefix, rank, dir, iteration);
+  construct_access(collname, obj_name, & collection, & doc);
 
   int64_t count = mongoc_collection_count (collection, MONGOC_QUERY_NONE, doc, 0,  0, NULL, & error );
   if (count < 0){
@@ -268,39 +293,36 @@ static int stat_file(char * filename, char * prefix, int rank, int dir, int iter
     ret = MD_ERROR_FIND;
   }
 
-  bson_destroy (doc);
-  mongoc_collection_destroy (collection);
+  free_access(collection, doc);
   return ret;
 }
 
-static int delete_file(char * filename, char * prefix, int rank, int dir, int iteration){
+static int delete_obj(char * collname, char * obj_name){
   bson_t *doc;
   bson_error_t error;
   mongoc_collection_t * collection;
-  construct_access(filename, & collection, & doc, prefix, rank, dir, iteration);
+  construct_access(collname, obj_name, & collection, & doc);
 
   mongoc_collection_remove(collection, MONGOC_REMOVE_NONE, doc, NULL, & error);
-  bson_destroy (doc);
-  mongoc_collection_destroy (collection);
+  free_access(collection, doc);
   return MD_SUCCESS;
 }
-
-
-
 
 struct md_plugin md_plugin_mongo = {
   "mongo",
   get_options,
   initialize,
   finalize,
-  prepare_testdir,
-  purge_testdir,
-  create_rank_dir,
-  rm_rank_dir,
-  create_dir,
-  rm_dir,
-  write_file,
-  read_file,
-  stat_file,
-  delete_file
+  prepare_global,
+  purge_global,
+
+  def_dset_name,
+  create_dset,
+  rm_dset,
+
+  def_obj_name,
+  write_obj,
+  read_obj,
+  stat_obj,
+  delete_obj
 };

@@ -57,7 +57,7 @@ static int finalize(){
 }
 
 
-static int prepare_testdir(char * dir){
+static int prepare_global(){
   if (! bucket_per_set){
     // check if the bucket exists, otherwise create it
 
@@ -68,24 +68,15 @@ static int prepare_testdir(char * dir){
     // S3_MAX_KEY_SIZE
   }
 
-  return mkdir(dir, 0755);
+  return MD_NOOP;
 }
 
-static int purge_testdir(char * dir){
+static int purge_global(){
   if (! bucket_per_set){
     // S3_delete_bucket
   }
   return rmdir(dir);
 }
-
-static int create_rank_dir(char * filename, char * prefix, int rank){
-  return MD_NOOP;
-}
-
-static int rm_rank_dir(char * filename, char * prefix, int rank){
-  return MD_NOOP;
-}
-
 
 static int create_dir(char * filename, char * prefix, int rank, int iteration){
   if (bucket_per_set){
@@ -174,14 +165,16 @@ struct md_plugin md_plugin_s3 = {
   get_options,
   initialize,
   finalize,
-  prepare_testdir,
-  purge_testdir,
-  create_rank_dir,
-  rm_rank_dir,
-  create_dir,
-  rm_dir,
-  write_file,
-  read_file,
-  stat_file,
-  delete_file
+  prepare_global,
+  purge_global,
+
+  def_dset_name,
+  create_dset,
+  rm_dset,
+
+  def_obj_name,
+  write_obj,
+  read_obj,
+  stat_obj,
+  delete_obj
 };

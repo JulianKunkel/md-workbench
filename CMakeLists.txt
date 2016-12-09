@@ -66,8 +66,7 @@ endif(DOXYGEN_FOUND)
 
 
 ## identify which plugins are compilable
-set(PLUGINS "${PLUGIN_DIR}/md-posix.c")
-#  "${PLUGIN_DIR}/md-mpi.c"
+set(PLUGINS "${PLUGIN_DIR}/md-posix.c" "${PLUGIN_DIR}/md-mpi.c")
 add_definitions("-DMD_PLUGIN_MPIIO")
 
 # GIT VERSIONs:
@@ -84,13 +83,13 @@ if(MONGOC_VERSION)
 endif()
 if(LIBPQ_VERSION)
   #MESSAGE("")
-  set(PLUGINS "${PLUGIN_DIR}/md-postgres.c" ${PLUGINS})
-  add_definitions("-DMD_PLUGIN_POSTGRES")
+#  set(PLUGINS "${PLUGIN_DIR}/md-postgres.c" ${PLUGINS})
+#  add_definitions("-DMD_PLUGIN_POSTGRES")
 endif()
 if(LIBS3_VERSION)
   #MESSAGE("")
-  set(PLUGINS "${PLUGIN_DIR}/md-s3.c" ${PLUGINS})
-  add_definitions("-DMD_PLUGIN_S3")
+#  set(PLUGINS "${PLUGIN_DIR}/md-s3.c" ${PLUGINS})
+#  add_definitions("-DMD_PLUGIN_S3")
 endif()
 
 set(PLUGINS ${PLUGINS} CACHE FILEPATH "enabled plugins")
