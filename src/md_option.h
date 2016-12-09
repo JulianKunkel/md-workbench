@@ -38,6 +38,8 @@ typedef struct{
 
 void print_help(option_help * args, int is_plugin);
 
+void print_current_options(option_help * args);
+
 //@return the number of parsed arguments
 int parseOptions(int argc, char ** argv, option_help * args, int * print_help);
 

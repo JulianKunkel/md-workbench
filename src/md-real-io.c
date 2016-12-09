@@ -62,103 +62,225 @@ NULL
 #endif
 #endif
 
-struct md_plugin * plugin = NULL;
+// successfull, errors
+typedef struct {
+  int suc;
+  int err;
+} op_stat_t;
 
-char * dir = "out";
-char * interface = "posix";
-int num = 1000;
-int precreate = 3000;
-int dirs = 10;
+// statistics for running a single phase
+typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
+  double t;
+  double t_incl_barrier;
 
-int offset = 1;
+  op_stat_t dset_name;
+  op_stat_t dset_create;
+  op_stat_t dset_delete;
 
-int file_size = 3900;
+  op_stat_t obj_name;
+  op_stat_t obj_create;
+  op_stat_t obj_read;
+  op_stat_t obj_stat;
+  op_stat_t obj_delete;
+} phase_stat_t;
 
-int verbosity = 0;
-int thread_report = 0;
-int skip_cleanup = 0;
-int cleanup_only = 0;
-int print_pattern = 0;
-
-int ignore_precreate_errors = 0;
-int rank;
-int size;
-
-// statistics for the operations
-int p_dirs_created = 0;
-int p_dirs_creation_errors = 0;
-int p_files_created = 0;
-int p_files_creation_errors = 0;
-
-int c_files_deleted = 0;
-int c_dirs_deleted = 0;
-int c_files_deletion_error = 0;
-
-int b_file_created = 0;
-int b_file_accessed = 0;
-int b_file_creation_errors = 0;
-int b_file_access_errors = 0;
-
-// timers
-double t_all, t_precreate = 0, t_benchmark = 0, t_cleanup = 0;
-double t_precreate_i = 0, t_benchmark_i = 0, t_cleanup_i = 0;
-
-#ifndef FILENAME_MAX
-#define FILENAME_MAX 4096
-#endif
+#define init_stats(p) memset(& p, 0, sizeof(p));
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
 #define LLU (long long unsigned)
 #define min(a,b) (a < b ? a : b)
 
-void run_precreate(){
-  char filename[FILENAME_MAX];
+struct benchmark_options{
+  struct md_plugin * plugin;
 
-  int ret;
+  char * interface;
+  int num;
+  int precreate;
+  int dset_count;
 
-  ret = plugin->create_rank_dir(filename, dir, rank);
-  if (ret == MD_NOOP){
-    // do not increment any counter
-  }else if (ret == MD_SUCCESS){
-    p_dirs_created++;
+  int offset;
+  int iterations;
+  int file_size;
+
+  int start_index;
+  int phase_cleanup;
+  int phase_precreate;
+  int phase_benchmark;
+
+  int verbosity;
+  int process_report;
+  int print_pattern;
+  int print_detailed_stats;
+  int quiet_output;
+
+  int ignore_precreate_errors;
+  int rank;
+  int size;
+};
+
+struct benchmark_options o;
+
+void init_options(){
+  memset(& o, 0, sizeof(o));
+  o.interface = "posix";
+  o.num = 1000;
+  o.precreate = 3000;
+  o.dset_count = 10;
+  o.offset = 1;
+  o.iterations = 3;
+  o.file_size = 3900;
+}
+
+static void print_detailed_stat_header(){
+    printf("phase\t\td name\tcreate\tdelete\tob nam\tcreate\tread\tstat\tdelete\tt_inc_b\tt_no_bar\tthp\n");
+}
+
+static int sum_err(phase_stat_t * p){
+  return p->dset_name.err + p->dset_create.err +  p->dset_delete.err + p->obj_name.err + p->obj_create.err + p->obj_read.err + p->obj_stat.err + p->obj_delete.err;
+}
+
+static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
+  const double tp = (uint64_t)(p->obj_create.suc + p->obj_read.suc) * o.file_size / p->t_incl_barrier / 1024 / 1024;
+
+  const int errs = sum_err(p);
+
+  if (o.print_detailed_stats){
+    sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, p->t_incl_barrier, tp);
+
+    if (errs > 0){
+      sprintf(buff, "%s err\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d", name, p->dset_name.err, p->dset_create.err,  p->dset_delete.err, p->obj_name.err, p->obj_create.err, p->obj_read.err, p->obj_stat.err, p->obj_delete.err);
+    }
   }else{
-    p_dirs_creation_errors++;
-    if (! ignore_precreate_errors){
-      printf("Error while creating the directory %s (%s)\n", filename, strerror(errno));
-      MPI_Abort(MPI_COMM_WORLD, 1);
+    int pos = 0;
+    // single line
+    switch(name[0]){
+      case('b'):
+        pos = sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+          p->obj_create.suc,
+          p->obj_create.suc / p->t_incl_barrier,
+          tp);
+        break;
+      case('p'):
+        pos = sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+          p->dset_create.suc,
+          p->obj_create.suc,
+          p->dset_create.suc / p->t_incl_barrier,
+          p->obj_create.suc / p->t_incl_barrier,
+          tp);
+        break;
+      case('c'):
+        pos = sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, p->t_incl_barrier,
+          p->obj_delete.suc,
+          p->dset_delete.suc,
+          p->obj_delete.suc / p->t_incl_barrier,
+          p->dset_delete.suc / p->t_incl_barrier);
+        break;
+      default:
+        pos = sprintf(buff, "%s: unknown phase", name);
+      break;
+    }
+    if(! o.quiet_output || errs > 0){
+      pos = pos + sprintf(buff + pos, " (%d errs", errs);
+      if(errs > 0){
+        sprintf(buff + pos, "!!!)" );
+      }else{
+        sprintf(buff + pos, ")" );
+      }
     }
   }
+}
 
-  for(int i=0; i < dirs; i++){
-    ret = plugin->create_dir(filename, dir, rank, i);
+static void end_phase(const char * name, phase_stat_t * p, timer start){
+  int ret;
+  char buff[4096];
+  p->t = stop_timer(start);
+  MPI_Barrier(MPI_COMM_WORLD);
+  p->t_incl_barrier = stop_timer(start);
+
+  // prepare the summarized report
+  phase_stat_t g_stat;
+  init_stats(g_stat);
+  // reduce timers
+  ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  CHECK_MPI_RET(ret)
+  ret = MPI_Reduce(& p->dset_name, & g_stat.dset_name, 2*(3+5), MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+  CHECK_MPI_RET(ret)
+
+  if (o.rank == 0){
+    //print the stats:
+    print_p_stat(buff, name, & g_stat);
+    printf("%s\n", buff);
+  }
+
+  if(o.process_report){
+    if(o.rank == 0){
+      print_p_stat(buff, name, p);
+      printf("0: %s\n", buff);
+      for(int i=1; i < o.size; i++){
+        MPI_Recv(buff, 4096, MPI_CHAR, i, 4711, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("%d: %s\n", i, buff);
+      }
+    }else{
+      print_p_stat(buff, name, p);
+      MPI_Send(buff, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
+    }
+  }
+}
+
+void run_precreate(phase_stat_t * s){
+  char dset[4096];
+  int ret;
+
+  for(int i=0; i < o.dset_count; i++){
+    ret = o.plugin->def_dset_name(dset, o.rank, i);
+    if (ret != MD_SUCCESS){
+      if (! o.ignore_precreate_errors){
+        printf("Error defining the dataset name!\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
+      }
+      s->dset_name.err++;
+      continue;
+    }
+    s->dset_name.suc++;
+    ret = o.plugin->create_dset(dset);
     if (ret == MD_NOOP){
       // do not increment any counter
     }else if (ret == MD_SUCCESS){
-      p_dirs_created++;
+      s->dset_create.suc++;
     }else{
-      p_dirs_creation_errors++;
-      if (! ignore_precreate_errors){
-        printf("Error while creating the directory %s (%s)\n", filename, strerror(errno));
+      s->dset_create.err++;
+      if (! o.ignore_precreate_errors){
+        printf("Error while creating the directory %s\n", dset);
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
     }
   }
 
-  char * buf = malloc(file_size);
-  memset(buf, rank % 256, file_size);
+  char * buf = malloc(o.file_size);
+  memset(buf, o.rank % 256, o.file_size);
 
-  // create the files
-  for(int d=0; d < dirs; d++){
-    for(int f=0; f < precreate; f++){
-      ret = plugin->write_file(filename, buf, file_size, dir, rank, d, f);
+  // create the obj
+  for(int d=0; d < o.dset_count; d++){
+    for(int f=0; f < o.precreate; f++){
+      ret = o.plugin->def_obj_name(dset, o.rank, d, f);
+      if (ret != MD_SUCCESS){
+        s->dset_name.err++;
+        if (! o.ignore_precreate_errors){
+          printf("Error while creating the obj %s\n", dset);
+          MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        s->obj_name.err++;
+        continue;
+      }
+      ret = o.plugin->write_obj(dset, buf, o.file_size);
       if (ret == MD_NOOP){
         // do not increment any counter
       }else if (ret == MD_SUCCESS){
-        p_files_created++;
+        s->obj_create.suc++;
       }else{
-        p_files_creation_errors++;
-        if (! ignore_precreate_errors){
-          printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
+        s->obj_create.err++;
+        if (! o.ignore_precreate_errors){
+          printf("Error while creating the obj %s\n", dset);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
       }
@@ -169,13 +291,13 @@ void run_precreate(){
 
 
 static void print_access_pattern(){
-  if (rank == 0){
+  if (o.rank == 0){
      printf("I/O pattern\n");
-     for(int n=0; n < size; n++){
-       for(int d=0; d < dirs; d++){
-         int writeRank = (n + offset * (d+1)) % size;
-         int readRank = (n - offset * (d+1)) % size;
-         readRank = readRank < 0 ? readRank + size : readRank;
+     for(int n=0; n < o.size; n++){
+       for(int d=0; d < o.dset_count; d++){
+         int writeRank = (n + o.offset * (d+1)) % o.size;
+         int readRank = (n - o.offset * (d+1)) % o.size;
+         readRank = readRank < 0 ? readRank + o.size : readRank;
          printf("%d: write: %d read: %d\n", n, writeRank, readRank);
        }
     }
@@ -184,204 +306,137 @@ static void print_access_pattern(){
 
 
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
-void run_benchmark(){
-  char filename[FILENAME_MAX];
+void run_benchmark(phase_stat_t * s, int start_index){
+  char dset[4096];
   int ret;
-  char * buf = malloc(file_size);
-  memset(buf, rank % 256, file_size);
+  char * buf = malloc(o.file_size);
+  memset(buf, o.rank % 256, o.file_size);
 
-  for(int f=0; f < num; f++){
-    for(int d=0; d < dirs; d++){
-      int writeRank = (rank + offset * (d+1)) % size;
-
-      ret = plugin->write_file(filename, buf, file_size,  dir, writeRank, d, precreate + f);
-      if (verbosity){
-        printf("%d Write %s \n", rank, filename);
-      }
-
-      if (ret == MD_ERROR_CREATE){
-        printf("Error while creating the file %s (%s)\n", filename, strerror(errno));
-        b_file_creation_errors++;
-      }else{
-        if (ret == MD_NOOP){
-          // do not increment any counter
-        }else if (ret != MD_SUCCESS){
-          printf("Error while writing the file %s (%s)\n", filename, strerror(errno));
-          b_file_creation_errors++;
-        }else{
-          b_file_created++;
-        }
-      }
-
-      int readRank = (rank - offset * (d+1)) % size;
-      readRank = readRank < 0 ? readRank + size : readRank;
-      ret = plugin->stat_file(filename, dir, readRank, d, f, file_size);
-      if(ret != MD_SUCCESS && ret != MD_NOOP){
-        printf("Error while stating the file %s (%s)\n", filename, strerror(errno));
-        b_file_access_errors++;
+  for(int f=0; f < o.num; f++){
+    for(int d=0; d < o.dset_count; d++){
+      int writeRank = (o.rank + o.offset * (d+1)) % o.size;
+      const int prevFile = f + start_index;
+      ret = o.plugin->def_obj_name(dset, writeRank, d, o.precreate + prevFile);
+      if (ret != MD_SUCCESS){
+        s->obj_name.err++;
         continue;
       }
 
-      if (verbosity){
-        printf("%d Access %s \n", rank, filename);
+      if (o.verbosity > 2)
+        printf("%d Create %s \n", o.rank, dset);
+
+      ret = o.plugin->write_obj(dset, buf, o.file_size);
+      if (ret == MD_SUCCESS){
+          s->obj_create.suc++;
+      }else if (ret == MD_ERROR_CREATE){
+        if (o.verbosity)
+          printf("Error while creating the obj: %s\n", dset);
+        s->obj_create.err++;
+      }else if (ret == MD_NOOP){
+          // do not increment any counter
+      }else{
+        if (o.verbosity)
+          printf("Error while writing the obj: %s\n", dset);
+        s->obj_create.err++;
       }
 
-      ret = plugin->read_file(filename, buf, file_size, dir, readRank, d, f);
-      if (ret == MD_NOOP){
+      int readRank = (o.rank - o.offset * (d+1)) % o.size;
+      readRank = readRank < 0 ? readRank + o.size : readRank;
+      ret = o.plugin->def_obj_name(dset, readRank, d, prevFile);
+      if (ret != MD_SUCCESS){
+        s->obj_name.err++;
+        continue;
+      }
+      ret = o.plugin->stat_obj(dset, o.file_size);
+      if(ret != MD_SUCCESS && ret != MD_NOOP){
+        if (o.verbosity)
+          printf("Error while stating the obj: %s\n", dset);
+        s->obj_stat.err++;
+        continue;
+      }
+      s->obj_stat.suc++;
+
+      if (o.verbosity > 2){
+        printf("%d Access %s \n", o.rank, dset);
+      }
+      ret = o.plugin->read_obj(dset, buf, o.file_size);
+      if (ret == MD_SUCCESS){
+        s->obj_read.suc++;
+      }else if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_ERROR_FIND){
-        printf("Error while accessing the file %s (%s)\n", filename, strerror(errno));
-        b_file_access_errors++;
+        printf("Error while accessing the file %s (%s)\n", dset, strerror(errno));
+        s->obj_read.err++;
       }else{
-        if (ret != MD_SUCCESS){
-          printf("Error while reading the file %s (%s)\n", filename, strerror(errno));
-          b_file_access_errors++;
-          continue;
-        }
-        b_file_accessed++;
+        printf("Error while reading the file %s (%s)\n", dset, strerror(errno));
+        s->obj_read.err++;
+        continue;
       }
 
-      plugin->delete_file(filename, dir, readRank, d, f);
-      if (ret == MD_NOOP){
+      o.plugin->delete_obj(dset);
+      if (ret == MD_SUCCESS){
+        s->obj_delete.suc++;
+      }else if (ret == MD_NOOP){
         // nothing to do
-      }else if (ret != MD_SUCCESS){
-        b_file_access_errors++;
+      }else{
+        s->obj_delete.err++;
       }
     }
   }
   free(buf);
 }
 
-void run_cleanup(){
-  char filename[FILENAME_MAX];
+void run_cleanup(phase_stat_t * s, int start_index){
+  char dset[4096];
   int ret;
 
-  for(int d=0; d < dirs; d++){
-    for(int f=0; f < precreate; f++){
-      ret = plugin->delete_file(filename, dir, rank, d, f+num);
+  for(int d=0; d < o.dset_count; d++){
+    for(int f=0; f < o.precreate; f++){
+      ret = o.plugin->def_obj_name(dset, o.rank, d, f + o.num + start_index);
+      ret = o.plugin->delete_obj(dset);
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_SUCCESS){
-        c_files_deleted++;
-      }else{
-        c_files_deletion_error++;
+        s->obj_delete.suc++;
+      }else if(ret != MD_NOOP){
+        s->obj_delete.err++;
       }
     }
 
-    ret = plugin->rm_dir(filename, dir, rank, d);
+    ret = o.plugin->def_dset_name(dset, o.rank, d);
+    ret = o.plugin->rm_dset(dset);
     if (ret == MD_SUCCESS){
-      c_dirs_deleted++;
-    }
-  }
-  ret = plugin->rm_rank_dir(filename, dir,rank);
-  if (ret == MD_SUCCESS){
-    c_dirs_deleted++;
-  }
-}
-
-static void print_additional_thread_report_header(){
-  printf("\nIndividual report:\n");
-  printf("Rank\tPrecreate\tBenchmark\tCleanup\t");
-  printf("P:CreatedSets\tCreatedObjs ");
-  printf("\tB:Created\tAccessed");
-  printf("\tC:Deleted\n");
-}
-
-static void print_additional_thread_reports(char * b){
-  b += sprintf(b, "%d\t%.2fs\t\t%.2fs\t\t%.2fs\t", rank, t_precreate_i, t_benchmark_i, t_cleanup_i);
-  b += sprintf(b, "     %d(%d)\t%d(%d)", p_dirs_created, p_dirs_creation_errors, p_files_created, p_files_creation_errors);
-  b +=  sprintf(b, "\t%d(%d)\t%d(%d)", b_file_created, b_file_creation_errors, b_file_accessed, b_file_access_errors);
-  b += sprintf(b, "\t%d(%d)\n", c_files_deleted, c_files_deletion_error);
-}
-
-static void prepare_report(){
-  int ret;
-  double t_max[3] = {t_precreate - t_precreate_i , t_benchmark - t_benchmark_i , t_cleanup - t_cleanup_i};
-
-  uint64_t errors[] = {p_dirs_creation_errors, p_files_creation_errors, b_file_creation_errors, b_file_access_errors, c_files_deletion_error};
-  uint64_t correct[] = {p_dirs_created, p_files_created, b_file_created, b_file_accessed, c_files_deleted, c_dirs_deleted};
-
-  if (rank == 0){
-    ret = MPI_Reduce(MPI_IN_PLACE, & t_max, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    CHECK_MPI_RET(ret)
-    ret = MPI_Reduce(MPI_IN_PLACE, errors, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    CHECK_MPI_RET(ret)
-    ret = MPI_Reduce(MPI_IN_PLACE, correct, 6, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    CHECK_MPI_RET(ret)
-    uint64_t sumErrors = errors[0] + errors[1] + errors[2] + errors[3] + errors[4];
-
-    printf("\nTotal runtime:       %.3fs = %.2fs + %.2fs + %.2fs (precreate + benchmark + cleanup)\n", t_all, t_precreate, t_benchmark, t_cleanup);
-    printf("Barrier time:        %.2fs; %.2fs; %.2fs\n", t_max[0], t_max[1], t_max[2]);
-    printf("Operations:          sets: %llu objs: %llu; write: %llu read: %llu; objs: %llu sets: %llu\n" , LLU correct[0], LLU correct[1], LLU correct[2], LLU correct[3], LLU correct[4], LLU correct[5]);
-
-    double v_pre = LLU correct[1] / (1024.0*1024) * file_size;
-    double v_bench = LLU correct[2] / (1024.0*1024) * file_size;
-    printf("Volume:              precreate: %.1f MiB benchmark: %.1f MiB\n", v_pre, v_bench);
-    if(sumErrors > 0){
-      printf("Errors: %llu /Pre dir: %llu files: %llu /Bench create: %llu access: %llu /Clean files: %llu\n", LLU sumErrors, LLU errors[0], LLU errors[1], LLU errors[2], LLU errors[3], LLU errors[4] );
-    }
-
-    printf("\nCompound performance for the phases:\n");
-    if (! cleanup_only){
-      printf("Precreate: %.1f elements/s (obj+sets) %.1f MiB/s - (create sets, objs and write)\n", (correct[0] + correct[1]) / t_precreate, correct[1] * file_size / t_precreate / (1024.0*1024));
-      printf("Benchmark: %.1f iters/s %.1f MiB/s - an iteration is (write new, stat, read and delete old)\n", min(correct[2], correct[3]) / t_benchmark, (correct[2] + correct[3]) * file_size / t_benchmark / (1024.0*1024));
-    }
-    if (! skip_cleanup){
-      printf("Cleanup:   %.1f elements/s (sets+objs) - (delete objs and sets)\n", (correct[4]+correct[5]) / t_cleanup );
-    }
-
-  }else{ // rank != 0
-    ret = MPI_Reduce(t_max, NULL, 3, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    CHECK_MPI_RET(ret)
-
-    ret = MPI_Reduce(errors, NULL, 5, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    ret = MPI_Reduce(correct, NULL, 6, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    CHECK_MPI_RET(ret)
-  }
-
-  if( thread_report ){
-    // individual reports per thread
-    char thread_buffer[4096];
-
-    if (rank == 0){
-      print_additional_thread_report_header();
-
-      print_additional_thread_reports(thread_buffer);
-      printf("%s", thread_buffer);
-      for(int i=1; i < size; i++){
-        MPI_Recv(thread_buffer, 4096, MPI_CHAR, i, 4711, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("%s", thread_buffer);
-      }
-    }else{
-      print_additional_thread_reports(thread_buffer);
-      MPI_Send(thread_buffer, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
+      s->dset_delete.suc++;
+    }else if (ret != MD_NOOP){
+      s->dset_delete.err++;
     }
   }
 }
 
 
 static option_help options [] = {
-  {'T', "target", "Target identifier (directory) where to run the benchmark.", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
-  {'O', "offset", "Offset in ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & offset},
-  {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & interface},
-  {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & num},
-  {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & precreate},
-  {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & dirs},
-  {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & print_pattern},
-
-  {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & file_size},
-
-  {0, "cleanup-only", "Cleanup data only, necessary if a benchmark aborts", OPTION_FLAG, 'd', & cleanup_only},
-  {0, "skip-cleanup-phase", "Skip the cleanup phase", OPTION_FLAG, 'd', & skip_cleanup},
-  {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & ignore_precreate_errors},
-  {0, "thread-reports", "Independent report per thread", OPTION_FLAG, 'd', & thread_report},
-
-  {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & verbosity},
+  {'O', "offset", "Offset in o.ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.offset},
+  {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & o.interface},
+  {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
+  {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
+  {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
+  {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
+  {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
+  {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & o.print_pattern},
+  {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
+  {0, "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
+  {0, "start-index", "Start with this file index in the benchmark; if combined with run-benchmark, this allows to run the benchmark multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.start_index},
+  {0, "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
+  {0, "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
+  {0, "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
+  {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
+  {0, "process-reports", "Independent report per process", OPTION_FLAG, 'd', & o.process_report},
+  {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & o.verbosity},
   LAST_OPTION
   };
 
 static void find_interface(){
-  int is_list = strcmp(interface, "list") == 0 && rank == 0;
+  int is_list = strcmp(o.interface, "list") == 0 && o.rank == 0;
   if (is_list){
     printf("Available plugins: ");
   }
@@ -390,44 +445,53 @@ static void find_interface(){
     if(is_list){
       printf("%s ", (*p_it)->name);
     }
-    if(strcmp((*p_it)->name, interface) == 0) {
+    if(strcmp((*p_it)->name, o.interface) == 0) {
       // got it
-      plugin = *p_it;
+      o.plugin = *p_it;
       return;
     }
     p_it++;
   }
-  if (rank == 0){
+  if (o.rank == 0){
     if(is_list){
       printf("\n");
     }else{
-      printf("Could not find plugin for interface: %s\n", interface);
+      printf("Could not find plugin for interface: %s\n", o.interface);
     }
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 }
 
+void printTime(){
+    char buff[100];
+    time_t now = time (0);
+    strftime (buff, 100, "%Y-%m-%d %H:%M:%S", localtime (&now));
+    printf("%s\n", buff);
+}
+
 int main(int argc, char ** argv){
   int ret;
   int printhelp = 0;
-  MPI_Init(& argc, & argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, & rank);
-  MPI_Comm_size(MPI_COMM_WORLD, & size);
 
+  init_options();
+
+  MPI_Init(& argc, & argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, & o.rank);
+  MPI_Comm_size(MPI_COMM_WORLD, & o.size);
   int parsed = parseOptions(argc, argv, options, & printhelp);
 
   find_interface();
 
-  parseOptions(argc - parsed, argv + parsed, plugin->get_options(), & printhelp);
+  parseOptions(argc - parsed, argv + parsed, o.plugin->get_options(), & printhelp);
 
   if(printhelp != 0){
-    if (rank == 0){
+    if (o.rank == 0){
       printf("\nSynopsis: %s ", argv[0]);
 
       print_help(options, 0);
 
-      printf("\nPlugin options for interface %s\n", interface);
-      print_help(plugin->get_options(), 1);
+      printf("\nPlugin options for interface %s\n", o.interface);
+      print_help(o.plugin->get_options(), 1);
     }
     MPI_Finalize();
     if(printhelp == 1){
@@ -437,88 +501,109 @@ int main(int argc, char ** argv){
     }
   }
 
-  if(print_pattern){
+  if(o.print_pattern){
      print_access_pattern();
      MPI_Finalize();
      exit(0);
   }
 
-  ret = plugin->initialize();
+  if (!(o.phase_cleanup || o.phase_precreate || o.phase_benchmark)){
+    // enable all phases
+    o.phase_cleanup = o.phase_precreate = o.phase_benchmark = 1;
+  }
+  if ( o.start_index > 0 && o.phase_precreate ){
+    printf("The option start_index cannot be used with pre-create!");
+    MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
+  ret = o.plugin->initialize();
   if (ret != MD_SUCCESS){
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  size_t total_files_count = dirs * (size_t) (num + precreate) * size;
-
-  if (rank == 0){
-    if(num > precreate){
-      printf("WARNING: num > precreate, this may cause the situation that no files are available to read\n");
+  size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
+  if (o.rank == 0 && ! o.quiet_output){
+    printf("MD-REAL-IO total objects: %zu (version: %s) time: ", total_obj_count, VERSION);
+    printTime();
+    if(o.num > o.precreate){
+      printf("WARNING: num > precreate, this may cause the situation that no objects are available to read\n");
     }
-    printf("MD-REAL-IO total objects created: %zu (version: %s)\n", total_files_count, VERSION);
+  }
+
+
+  if ( o.rank == 0 && ! o.quiet_output ){
+    // print the set output options
+    print_current_options(options);
+    printf("\n");
+    print_current_options(o.plugin->get_options());
+
+    printf("\n");
   }
 
   timer bench_start;
+  start_timer(& bench_start);
+  timer tmp;
+  phase_stat_t phase_stats;
 
-  if (! cleanup_only){
-    if (rank == 0){
-      ret = plugin->prepare_testdir(dir);
+  if(o.rank == 0 && o.print_detailed_stats && ! o.quiet_output){
+    print_detailed_stat_header();
+  }
+
+  if (o.phase_precreate){
+    if (o.rank == 0){
+      ret = o.plugin->prepare_global();
       if ( ret != MD_SUCCESS && ret != MD_NOOP ){
-        printf("Could not create project directory %s (%s)\n", dir, strerror(errno));
+        printf("Rank 0 could not prepare the run, aborting\n");
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
-      if (ret == MD_SUCCESS){
-        p_dirs_created++;
-      }
     }
-  }
-  MPI_Barrier(MPI_COMM_WORLD);
-  start_timer(& bench_start);
+    init_stats(phase_stats);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-  timer tmp;
-
-  if (! cleanup_only){
     // pre-creation phase
     start_timer(& tmp);
-    run_precreate();
-    t_precreate_i = stop_timer(tmp);
-    MPI_Barrier(MPI_COMM_WORLD);
-    t_precreate = stop_timer(tmp);
+    run_precreate(& phase_stats);
+    end_phase("precreate", & phase_stats, tmp);
+  }
 
+  int current_index = o.start_index;
+
+  if (o.phase_benchmark){
     // benchmark phase
-    start_timer(& tmp);
-    run_benchmark();
-    t_benchmark_i = stop_timer(tmp);
-    MPI_Barrier(MPI_COMM_WORLD);
-    t_benchmark = stop_timer(tmp);
+    for(int i=0; i < o.iterations; i++){
+      init_stats(phase_stats);
+      start_timer(& tmp);
+      run_benchmark(& phase_stats, current_index);
+      current_index += o.num;
+      end_phase("benchmark", & phase_stats, tmp);
+    }
+    current_index -= o.num;
   }
 
   // cleanup phase
-  if (! skip_cleanup){
+  if (o.phase_cleanup){
+    init_stats(phase_stats);
     start_timer(& tmp);
-    run_cleanup();
-    t_cleanup_i = stop_timer(tmp);
-    MPI_Barrier(MPI_COMM_WORLD);
-    t_cleanup = stop_timer(tmp);
+    run_cleanup(& phase_stats, current_index);
+    end_phase("cleanup", & phase_stats, tmp);
 
-    if (rank == 0){
-      ret = plugin->purge_testdir(dir);
+    if (o.rank == 0){
+      ret = o.plugin->purge_global();
       if (ret != MD_SUCCESS && ret != MD_NOOP){
-        printf("Error purging the test directory\n");
-      }
-      if (ret == MD_SUCCESS){
-        c_dirs_deleted++;
+        printf("Rank 0: Error purging the global environment\n");
       }
     }
   }
 
-  t_all = stop_timer(bench_start);
-
-  ret = plugin->finalize();
+  double t_all = stop_timer(bench_start);
+  ret = o.plugin->finalize();
   if (ret != MD_SUCCESS){
     printf("Error while finalization of module\n");
   }
-
-  prepare_report();
+  if (o.rank == 0 && ! o.quiet_output){
+    printf("Total runtime: %.0fs time: ", t_all);
+    printTime();
+  }
 
   MPI_Finalize();
   return 0;

@@ -20,11 +20,15 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <string.h>
+#include <errno.h>
 
 #include <plugins/md-posix.h>
 
+static char * dir = "out";
 
 static option_help options [] = {
+  {'D', "root-dir", "Root directory", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
   LAST_OPTION
 };
 
@@ -41,39 +45,40 @@ static int finalize(){
 }
 
 
-static int prepare_testdir(char * dir){
-  return mkdir(dir, 0755);
+static int prepare_global(){
+  int ret = mkdir(dir, 0755);
+  if(ret != 0){
+    printf("Could not create the directory: %s; error: %s\n", dir, strerror(errno));
+    return MD_ERROR_UNKNOWN;
+  }
+  return MD_SUCCESS;
 }
 
-static int purge_testdir(char * dir){
+static int purge_global(){
   return rmdir(dir);
 }
 
-static int create_rank_dir(char * filename, char * prefix, int rank){
-  sprintf(filename, "%s/%d", prefix, rank);
+static int def_dset_name(char * out_name, int n, int d){
+  sprintf(out_name, "%s/%d_%d", dir, n, d);
+  return MD_SUCCESS;
+}
+
+static int def_obj_name(char * out_name, int n, int d, int i){
+  sprintf(out_name, "%s/%d_%d/file-%d", dir, n, d, i);
+  return MD_SUCCESS;
+}
+
+static int create_dset(char * filename){
   return mkdir(filename, 0755);
 }
 
-static int rm_rank_dir(char * filename, char * prefix, int rank){
-  sprintf(filename, "%s/%d", prefix, rank);
+static int rm_dset(char * filename){
   return rmdir(filename);
 }
 
-
-static int create_dir(char * filename, char * prefix, int rank, int iteration){
-  sprintf(filename, "%s/%d/%d", prefix, rank, iteration);
-  return mkdir(filename, 0755);
-}
-
-static int rm_dir(char * filename, char * prefix, int rank, int iteration){
-  sprintf(filename, "%s/%d/%d", prefix, rank, iteration);
-  return rmdir(filename);
-}
-
-static int write_file(char * filename, char * buf, size_t file_size,  char * prefix, int rank, int dir, int iteration){
+static int write_obj(char * filename, char * buf, size_t file_size){
   int ret;
   int fd;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
   fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
   if (fd == -1) return MD_ERROR_CREATE;
   ret = write(fd, buf, file_size);
@@ -83,10 +88,9 @@ static int write_file(char * filename, char * buf, size_t file_size,  char * pre
 }
 
 
-static int read_file(char * filename, char * buf, size_t file_size,  char * prefix, int rank, int dir, int iteration){
+static int read_obj(char * filename, char * buf, size_t file_size){
   int fd;
   int ret;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
   fd = open(filename, O_RDWR);
   if (fd == -1) return MD_ERROR_FIND;
   ret = read(fd, buf, file_size);
@@ -95,10 +99,9 @@ static int read_file(char * filename, char * buf, size_t file_size,  char * pref
   return ret;
 }
 
-static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
+static int stat_obj(char * filename, size_t file_size){
   struct stat file_stats;
   int ret;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
   ret = stat(filename, & file_stats);
   if ( ret != 0 ){
     return MD_ERROR_FIND;
@@ -106,8 +109,7 @@ static int stat_file(char * filename, char * prefix, int rank, int dir, int iter
   return MD_SUCCESS;
 }
 
-static int delete_file(char * filename, char * prefix, int rank, int dir, int iteration){
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
+static int delete_obj(char * filename){
   return unlink(filename);
 }
 
@@ -119,14 +121,16 @@ struct md_plugin md_plugin_posix = {
   get_options,
   initialize,
   finalize,
-  prepare_testdir,
-  purge_testdir,
-  create_rank_dir,
-  rm_rank_dir,
-  create_dir,
-  rm_dir,
-  write_file,
-  read_file,
-  stat_file,
-  delete_file
+  prepare_global,
+  purge_global,
+
+  def_dset_name,
+  create_dset,
+  rm_dset,
+
+  def_obj_name,
+  write_obj,
+  read_obj,
+  stat_obj,
+  delete_obj
 };
