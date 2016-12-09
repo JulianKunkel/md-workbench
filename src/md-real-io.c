@@ -274,7 +274,7 @@ void run_precreate(phase_stat_t * s){
         s->obj_name.err++;
         continue;
       }
-      ret = o.plugin->write_obj(obj_name, obj_name, buf, o.file_size);
+      ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_NOOP){
         // do not increment any counter
       }else if (ret == MD_SUCCESS){
@@ -329,7 +329,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity > 2)
         printf("%d Create %s \n", o.rank, dset);
 
-      ret = o.plugin->write_obj(obj_name, obj_name, buf, o.file_size);
+      ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
       }else if (ret == MD_ERROR_CREATE){
@@ -353,7 +353,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->def_dset_name(dset, readRank, d);
 
-      ret = o.plugin->stat_obj(obj_name, obj_name, o.file_size);
+      ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
           printf("Error while stating the obj: %s\n", dset);
@@ -365,7 +365,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity > 2){
         printf("%d Access %s \n", o.rank, dset);
       }
-      ret = o.plugin->read_obj(obj_name, obj_name, buf, o.file_size);
+      ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
       }else if (ret == MD_NOOP){
@@ -379,7 +379,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
         continue;
       }
 
-      o.plugin->delete_obj(obj_name, obj_name);
+      o.plugin->delete_obj(dset, obj_name);
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
       }else if (ret == MD_NOOP){

@@ -41,7 +41,7 @@ static char * host = "";
 static char * pq_options = "";
 static char * tbl_name = "md_real_io";
 
-static int table_per_tbl_name = 0;
+static int table_per_dset = 0;
 
 static option_help options [] = {
   {'D', "database", "Database name, this temporary database will be used for the test.", OPTION_REQUIRED_ARGUMENT, 's', & database},
@@ -50,7 +50,7 @@ static option_help options [] = {
   {'O', NULL, "Postgres options (see conninfo)", OPTION_OPTIONAL_ARGUMENT, 's', & pq_options},
   {'T', "table-name", "Name of the table", OPTION_OPTIONAL_ARGUMENT, 's', & tbl_name},
   {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 's', & password},
-  {'t', "use-table-per-tbl_name", "Create one table per tbl_nameectory, otherwise a global table is used", OPTION_FLAG, 'd', & table_per_tbl_name},
+  {'t', "use-table-per-tbl_name", "Create one table per tbl_nameectory, otherwise a global table is used", OPTION_FLAG, 'd', & table_per_dset},
   LAST_OPTION
 };
 
@@ -61,7 +61,7 @@ static option_help * get_options(){
 }
 
 static int prepare_global(){
-  if( ! table_per_tbl_name ){
+  if( ! table_per_dset ){
     char obj_name[1024];
     sprintf(obj_name, "CREATE TABLE %s(obj_name VARCHAR PRIMARY KEY, data BYTEA);", tbl_name);
 
@@ -80,7 +80,7 @@ static int prepare_global(){
 }
 
 static int purge_global(){
-  if( ! table_per_tbl_name ){
+  if( ! table_per_dset ){
     char obj_name[1024];
     sprintf(obj_name, "DROP TABLE %s;", tbl_name);
 
@@ -143,18 +143,24 @@ static int finalize(){
 }
 
 static int def_dset_name(char * out_name, int n, int d){
+  if( table_per_dset ){
+    sprintf(out_name, "%s_%d_%d", tbl_name, n, d);
+  }else{
+    sprintf(out_name, "%s", tbl_name);
+  }
   return MD_SUCCESS;
 }
 
-
-static int create_dset(char * obj_name, char * prefix, int rank, int iteration){
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "CREATE TABLE %s_%d_%d(obj_name VARCHAR PRIMARY KEY, data BYTEA);", prefix, rank, iteration);
-  }else{
-    sprintf(obj_name, "INSERT INTO %s (obj_name, data) VALUES('%d/%d', NULL);", prefix, rank, iteration);
+static int create_dset(char * dset_name){
+  if( ! table_per_dset ){
+    //sprintf(obj_name, "INSERT INTO %s (obj_name, data) VALUES('%d/%d', NULL);", prefix, rank, iteration);
+    return MD_NOOP;
   }
+  char SQL[4096];
+  sprintf(SQL, "CREATE TABLE %s(obj_name VARCHAR PRIMARY KEY, data BYTEA)", dset_name);
+
   PGresult * res;
-  res = PQexec(conn, obj_name);
+  res = PQexec(conn, SQL);
   if (PQresultStatus(res) != PGRES_COMMAND_OK){
     printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
     PQclear(res);
@@ -165,15 +171,16 @@ static int create_dset(char * obj_name, char * prefix, int rank, int iteration){
 }
 
 static int rm_dset(char * obj_name){
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "DROP TABLE %s_%d_%d;", prefix, rank, iteration);
-  }else{
-    sprintf(obj_name, "DELETE FROM %s WHERE obj_name = '%d/%d';", prefix, rank, iteration);
+  char SQL[4096];
+  if( ! table_per_dset ){
+    //sprintf(obj_name, "DELETE FROM %s WHERE obj_name = '%d/%d';", prefix, rank, iteration);
+    return MD_NOOP;
   }
+  sprintf(SQL, "DROP TABLE %s", obj_name);
   PGresult * res;
-  res = PQexec(conn, obj_name);
+  res = PQexec(conn, SQL);
   if (PQresultStatus(res) != PGRES_COMMAND_OK){
-    printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
+    printf("PSQL error (%s): %s - Connection: %s SQL: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn), SQL);
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
@@ -182,24 +189,25 @@ static int rm_dset(char * obj_name){
 }
 
 static int def_obj_name(char * out_name, int n, int d, int i){
-  sprintf(out_name, "%s/%d_%d/file-%d", dir, n, d, i);
+  if( table_per_dset ){
+    sprintf(out_name, "%d", i);
+  }else{
+    sprintf(out_name, "%d/%d/%d", n, d, i);
+  }
   return MD_SUCCESS;
 }
 
 
-static int write_obj(char * obj_name, char * buf, size_t file_size){
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "INSERT INTO %s_%d_%d(obj_name, data) VALUES('%d', $1::bytea)", prefix, rank, tbl_name, iteration);
-  }else{
-    sprintf(obj_name, "INSERT INTO %s (obj_name, data) VALUES('%d/%d/%d', $1::bytea)", prefix, rank, tbl_name, iteration);
-  }
+static int write_obj(char * dset_name, char * obj_name, char * buf, size_t obj_size){
+  char SQL[4096];
+  sprintf(SQL, "INSERT INTO %s(obj_name, data) VALUES('%s', $1::bytea)", dset_name, obj_name);
   PGresult * res;
   //printf("%s\n", obj_name);
   int paramFormats = 1;
-  const int size = (int) file_size;
-  res = PQexecParams(conn, obj_name, 1, NULL, (const char * const *) & buf, & size, & paramFormats, 1);
+  const int size = (int) obj_size;
+  res = PQexecParams(conn, SQL, 1, NULL, (const char * const *) & buf, & size, & paramFormats, 1);
   if (PQresultStatus(res) != PGRES_COMMAND_OK){
-    printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
+    printf("PSQL error (%s): %s - Connection: %s SQL: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn), SQL);
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
@@ -207,52 +215,46 @@ static int write_obj(char * obj_name, char * buf, size_t file_size){
   return MD_SUCCESS;
 }
 
-static int read_obj(char * obj_name, char * buf, size_t file_size){
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "SELECT data FROM %s_%d_%d WHERE obj_name = '%d';", prefix, rank, tbl_name, iteration);
-  }else{
-    sprintf(obj_name, "SELECT data FROM %s WHERE obj_name = '%d/%d/%d';", prefix, rank, tbl_name, iteration);
-  }
+static int read_obj(char * dset_name, char * obj_name, char * buf, size_t obj_size){
+  char SQL[4096];
+  sprintf(SQL, "SELECT data FROM %s WHERE obj_name = '%s'", dset_name, obj_name);
   PGresult * res;
-  res = PQexecParams(conn, obj_name, 0, NULL, NULL, NULL, NULL, 1);
+  res = PQexecParams(conn, SQL, 0, NULL, NULL, NULL, NULL, 1);
   if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1){
-    printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
+    printf("PSQL error (%s): %s - Connection: %s SQL: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn), SQL);
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
 
-  int size = PQgetlength(res, 0, 0);
+  size_t size = PQgetlength(res, 0, 0);
   const char* read_data = PQgetvalue(res, 0, 0);
-  if (size > file_size){
+  if (size > obj_size){
     PQclear(res); // short read
     return MD_ERROR_UNKNOWN;
   }
   memcpy(buf, read_data, size);
   PQclear(res);
 
-  if(file_size == size){
+  if(obj_size == size){
     return MD_SUCCESS;
   }
 
   return MD_ERROR_UNKNOWN;
 }
 
-static int stat_obj(char * obj_name, int file_size){
+static int stat_obj(char * dset_name, char * obj_name, size_t obj_size){
+  char SQL[4096];
   PGresult * res;
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "SELECT octet_length(data) FROM %s_%d_%d WHERE obj_name = '%d';", prefix, rank, tbl_name, iteration);
-  }else{
-    sprintf(obj_name, "SELECT octet_length(data) FROM %s WHERE obj_name = '%d/%d/%d';", prefix, rank, tbl_name, iteration);
-  }
-  res = PQexec(conn, obj_name);
+  sprintf(SQL, "SELECT octet_length(data) FROM %s WHERE obj_name = '%s'", dset_name, obj_name);
+  res = PQexec(conn, SQL);
   if (PQresultStatus(res) != PGRES_TUPLES_OK || PQntuples(res) != 1){
-    printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
+    printf("PSQL error (%s): %s - Connection: %s SQL: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn), SQL);
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
   // check the number of columns
   char * result = PQgetvalue(res, 0, 0);
-  if (atoll(result) != file_size){
+  if ((size_t) atoll(result) != obj_size){
     PQclear(res);
     return MD_ERROR_FIND;
   }
@@ -260,28 +262,23 @@ static int stat_obj(char * obj_name, int file_size){
   return MD_SUCCESS;
 }
 
-static int delete_obj(char * obj_name){
+static int delete_obj(char * dset_name, char * obj_name){
+  char SQL[4096];
   PGresult * res;
-  if( table_per_tbl_name ){
-    sprintf(obj_name, "DELETE FROM %s_%d_%d WHERE obj_name = '%d';", prefix, rank, tbl_name, iteration);
-  }else{
-    sprintf(obj_name, "DELETE FROM %s WHERE obj_name = '%d/%d/%d';", prefix, rank, tbl_name, iteration);
-  }
-  res = PQexec(conn, obj_name);
+  sprintf(SQL, "DELETE FROM %s WHERE obj_name = '%s'", dset_name, obj_name);
+  res = PQexec(conn, SQL);
   if (strcmp(PQcmdTuples(res), "1") != 0){
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
   if (PQresultStatus(res) != PGRES_COMMAND_OK){
-    printf("PSQL error (%s): %s - Connection: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn));
+    printf("PSQL error (%s): %s - Connection: %s SQL: %s\n", PQresStatus(PQresultStatus(res)), PQresultErrorMessage(res), PQerrorMessage(conn), SQL);
     PQclear(res);
     return MD_ERROR_UNKNOWN;
   }
   PQclear(res);
   return MD_SUCCESS;
 }
-
-
 
 
 struct md_plugin md_plugin_postgres = {

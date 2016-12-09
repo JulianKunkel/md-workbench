@@ -150,7 +150,7 @@ static int finalize(){
 
 static int def_dset_name(char * out_name, int n, int d){
   if(collection_per_dir){
-    sprintf(out_name, "%d_%d", n, d);
+    sprintf(out_name, "%s_%d_%d", global_coll_name, n, d);
   }else{
     sprintf(out_name, "%s", global_coll_name);
   }
