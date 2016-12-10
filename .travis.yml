@@ -9,7 +9,7 @@ before_install:
   - $CC --version
 
 before_script:
-  - sudo update-alternatives --set mpi $MPI
+  - sudo update-alternatives --set mpi $MPI || true
   - ./configure
   - cd build
   - cmake ..
@@ -66,6 +66,7 @@ matrix:
             - mpich2
       env:
         - MPI=/usr/include/mpich
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
         - COMPILER=gcc-5
     - compiler: gcc-6-mpich
       addons:
@@ -77,6 +78,7 @@ matrix:
             - mpich2
       env:
         - MPI=/usr/include/mpich
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
         - COMPILER=gcc-6
     - compiler: gcc-4.8-mpich
       addons:
@@ -88,7 +90,7 @@ matrix:
             - mpich2
       env:
         - MPI=/usr/include/mpich
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
         - COMPILER=gcc-4.8
-
   exclude:
     - compiler: gcc

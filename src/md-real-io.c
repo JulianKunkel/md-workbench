@@ -490,7 +490,8 @@ static void find_interface(){
       MPI_Abort(MPI_COMM_WORLD, 1);
     }
   }
-  MPI_Abort(MPI_COMM_WORLD, 0);
+  MPI_Finalize();
+  exit(0);
 }
 
 static void printTime(){
