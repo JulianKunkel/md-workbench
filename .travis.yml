@@ -1,4 +1,3 @@
-language: c
 dist: trusty
 sudo: true
 os: linux
@@ -9,54 +8,67 @@ before_script:
   - cmake ..
 script: make
 
-addons:
-  apt:
-    sources:
-      - ubuntu-toolchain-r-test
-
 matrix:
   include:
     - compiler: gcc-5
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-5
             - openmpi-bin
             - libopenmpi-dev
       env: MPI=openmpi
     - compiler: gcc-6
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-6
             - openmpi-bin
             - libopenmpi-dev
       env: MPI=openmpi
     - compiler: gcc-7
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-7
             - openmpi-bin
             - libopenmpi-dev
       env: MPI=openmpi
     - compiler: gcc-5
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-5
             - mpich
       env: MPI=mpich
     - compiler: gcc-6
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-6
             - mpich
       env: MPI=mpich
     - compiler: gcc-7
+      language: c
       addons:
         apt:
+          sources:
+            - ubuntu-toolchain-r-test
           packages:
             - gcc-7
             - mpich
