@@ -9,9 +9,38 @@ compiler: gcc
 dist: trusty
 sudo: true
 os: linux
-before_install:
-  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-  - sudo apt-get -qq update
-  - sudo apt-get install -y gcc-5 openmpi-bin libopenmpi-dev
 
-
+matrix:
+  include:
+    - compiler: gcc
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - gcc-5
+    - compiler: gcc
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - gcc-6
+    - compiler: gcc
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - gcc-7
+    - mpi: openmpi
+      addons:
+        apt:
+          packages:
+            - openmpi-bin
+            - libopenmpi-dev
+    - mpi: mpich
+      addons:
+        apt:
+          packages:
+            - mpich

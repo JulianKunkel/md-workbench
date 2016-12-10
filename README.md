@@ -1,6 +1,5 @@
-# MD-REAL-IO
+# MD-REAL-IO [![Build Status](https://travis-ci.org/JulianKunkel/md-real-io.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-real-io)
 *****
-[![Build Status](https://travis-ci.org/JulianKunkel/md-real-io.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-real-io)
 
 The MD-REAL-IO benchmark is an MPI-parallel benchmark to measure metadata (together with small object) performance.
 It aims to simulate actual user activities on a file system such as compilation.

@@ -17,15 +17,14 @@ function help(){
 	echo "--build-dir=<dir>        : directory in which to build"
 	echo "--debug                  : build with debug flags"
 	echo "--verbose                : output the command but do not execute it"
-	echo "--reconfigure            : run configure again with the parameters used the last time"
-	echo "--with-mpicc=<file>      : path to the MPI C compiler"
+	echo "--reconfigure           : run configure again with the parameters used the last time"
+	echo "--with-cc=<compiler>    : path to the C compiler"
+	echo "--with-mpi=<file>    : path to MPI"
 	echo "--with-libpq=<dir>      : path to libpq necessary for the postgres plugin"
 	echo "--with-mongoc=<dir>     : path to mongoc library necessary for the mongodb plugin"
 	echo "--with-libs3=<dir>      : path to libs3 library necessary for the Amazon S3 plugin"
 	echo
 }
-
-buildDIR="build"
 
 function reconfigure(){
 	if [[ ! -e "configure.log" ]] ; then
@@ -36,7 +35,35 @@ function reconfigure(){
 	exit $?
 }
 
-set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-libs3:,plantuml-jar-dir:,with-mpicc:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
+
+function check(){
+	if [[ "$1" == "" ]] ; then
+		return
+	fi
+	where=$1
+	what=$2
+	if [[ ! -e "$where" ]] ; then
+		echo "Error could not find $what in $where ; directory does not exist"
+		exit 1	
+	fi
+	export PKG_CONFIG_PATH=$where/lib/pkgconfig/:$PKG_CONFIG_PATH
+	#does not ship with pkg-config
+	pkg-config --exists $what
+	if [ $? != 0 ] ; then
+		if [[ -e $where/include && -e $where/lib ]] ; then 
+			AI="$AI $where/include"
+			AL="$AL $where/lib"
+		else
+			echo "Error could not find $what in $where"
+			exit 1
+		fi
+	fi
+}
+
+buildDIR="build"
+CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=release"
+
+set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-libs3:,plantuml-jar-dir:,with-mpi:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
 test $# -lt 1  && exit 1
 while test $# -gt 0
 do
@@ -45,12 +72,12 @@ do
 		--reconfigure) reconfigure;;
 		--version) cmake --version; exit;;
 		--prefix) prefix="$2"; shift;;
-		--debug) debug="yes"; ;;
-		--with-cc) ccbin="$2"; shift;;
-		--with-mpicc) mpicc="$2"; shift;;
-		--with-libpq) libpq="$2"; shift;;
-		--with-mongoc) mongoc="$2"; shift;;
-		--with-libs3) libs3="$2"; shift;;
+		--debug) CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=debug" ;;
+		--with-cc) CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_C_COMPILER:FILEPATH=$2"; export CC=$2; shift;;
+		--with-mpi) check "$2" "mpi"; shift;;
+		--with-libpq) check "$2" "libpq"; shift;;
+		--with-mongoc) check "$2" "libmongoc-1.0"; shift;;
+		--with-libs3) check "$2" "libs3"; shift;;
 		--build-dir) buildDIR="$2"; shift;;
 		--verbose) VERBOSE="YES";;
                 -V) VERBOSE="YES";;
@@ -64,32 +91,13 @@ echo $PARAMETERS > configure.log
 
 TARGET_DIR="/usr/local"
 
-if test -n "$debug"; then
-	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=debug"
-else
-	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=release"
-fi
-
 if test -n "$prefix"; then
 	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_INSTALL_PREFIX:PATH=$prefix"
 	TARGET_DIR="$prefix"
 fi
-if test -n "$ccbin"; then
-	CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_C_COMPILER:FILEPATH=$ccbin"
-fi
-if test -n "$mpicc"; then
-	CMAKEFLAGS="$CMAKEFLAGS -DMPI_C_COMPILER:FILEPATH=$mpicc"
-fi
 
-if test -n "$libpq"; then
-	export PKG_CONFIG_PATH=$libpq/lib/pkgconfig/:$PKG_CONFIG_PATH
-fi
-if test -n "$mongoc"; then
-	export PKG_CONFIG_PATH=$mongoc/lib/pkgconfig/:$PKG_CONFIG_PATH
-fi
-if test -n "$libs3"; then
-	export PKG_CONFIG_PATH=$libs3/lib/pkgconfig/:$PKG_CONFIG_PATH
-fi
+export ADDITIONAL_INC_PATH=$AI
+export ADDITIONAL_LIB_PATH=$AL
 
 # pkg-config --list-all
 
