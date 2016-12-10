@@ -9,13 +9,6 @@ before_script:
   - cmake ..
 script: make
 
-compiler:
-  - gcc-5
-  - gcc-6
-  - gcc-7
-env:
-  - MPI=mpich
-  - MPI=openmpi
 addons:
   apt:
     sources:
