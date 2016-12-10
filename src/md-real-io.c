@@ -253,7 +253,7 @@ void run_precreate(phase_stat_t * s){
     }else{
       s->dset_create.err++;
       if (! o.ignore_precreate_errors){
-        printf("Error while creating the dset: %s\n", dset);
+        printf("%d: Error while creating the dset: %s\n", o.rank, dset);
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
     }
@@ -270,7 +270,7 @@ void run_precreate(phase_stat_t * s){
       if (ret != MD_SUCCESS){
         s->dset_name.err++;
         if (! o.ignore_precreate_errors){
-          printf("Error while creating the obj name\n");
+          printf("%d: Error while creating the obj name\n", o.rank);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
         s->obj_name.err++;
@@ -284,7 +284,7 @@ void run_precreate(phase_stat_t * s){
       }else{
         s->obj_create.err++;
         if (! o.ignore_precreate_errors){
-          printf("Error while creating the obj: %s\n", obj_name);
+          printf("%d: Error while creating the obj: %s\n", o.rank, obj_name);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
       }
@@ -328,7 +328,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->def_dset_name(dset, writeRank, d);
 
-      if (o.verbosity > 2)
+      if (o.verbosity >= 2)
         printf("%d Create %s \n", o.rank, dset);
 
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
@@ -336,13 +336,13 @@ void run_benchmark(phase_stat_t * s, int start_index){
           s->obj_create.suc++;
       }else if (ret == MD_ERROR_CREATE){
         if (o.verbosity)
-          printf("Error while creating the obj: %s\n", dset);
+          printf("%d: Error while creating the obj: %s\n",o.rank, dset);
         s->obj_create.err++;
       }else if (ret == MD_NOOP){
           // do not increment any counter
       }else{
         if (o.verbosity)
-          printf("Error while writing the obj: %s\n", dset);
+          printf("%d: Error while writing the obj: %s\n",o.rank, dset);
         s->obj_create.err++;
       }
 
@@ -358,14 +358,14 @@ void run_benchmark(phase_stat_t * s, int start_index){
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
-          printf("Error while stating the obj: %s\n", dset);
+          printf("%d: Error while stating the obj: %s\n", o.rank, dset);
         s->obj_stat.err++;
         continue;
       }
       s->obj_stat.suc++;
 
-      if (o.verbosity > 2){
-        printf("%d Access %s \n", o.rank, dset);
+      if (o.verbosity >= 2){
+        printf("%d: Access %s \n", o.rank, dset);
       }
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
@@ -373,10 +373,10 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }else if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_ERROR_FIND){
-        printf("Error while accessing the file %s (%s)\n", dset, strerror(errno));
+        printf("%d: Error while accessing the file %s (%s)\n", o.rank, dset, strerror(errno));
         s->obj_read.err++;
       }else{
-        printf("Error while reading the file %s (%s)\n", dset, strerror(errno));
+        printf("%d: Error while reading the file %s (%s)\n", o.rank, dset, strerror(errno));
         s->obj_read.err++;
         continue;
       }

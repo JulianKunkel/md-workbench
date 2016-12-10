@@ -48,7 +48,7 @@ find_package_handle_standard_args(LIBS3  DEFAULT_MSG  LIBS3_LIBRARIES  LIBS3_INC
 include_directories("${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}")
 
 # compile flags
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -pedantic -Wall -Wextra -pedantic-errors -Wno-unused-parameter")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -pedantic -Wall -Wextra -pedantic-errors -Wno-unused-parameter -Werror")
 set (CMAKE_C_FLAGS_DEBUG   "-O0 -g3")
 set (CMAKE_C_FLAGS_RELEASE "-O3")
 
