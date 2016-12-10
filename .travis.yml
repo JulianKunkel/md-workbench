@@ -4,6 +4,9 @@ os: linux
 language: c
 compiler: gcc
 
+before_install:
+  - export CC=$COMPILER
+
 before_script:
   - sudo update-alternatives --set mpi $MPI
   - ./configure
