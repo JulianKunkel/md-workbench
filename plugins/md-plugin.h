@@ -18,6 +18,8 @@
 #ifndef MD_PLUGIN_H
 #define MD_PLUGIN_H
 
+#include <stdlib.h>
+
 #include <md_option.h>
 
 struct md_plugin{

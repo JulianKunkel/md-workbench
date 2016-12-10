@@ -66,7 +66,7 @@ endif(DOXYGEN_FOUND)
 
 
 ## identify which plugins are compilable
-set(PLUGINS "${PLUGIN_DIR}/md-posix.c" "${PLUGIN_DIR}/md-mpi.c")
+set(PLUGINS "${PLUGIN_DIR}/md-dummy.c" "${PLUGIN_DIR}/md-posix.c" "${PLUGIN_DIR}/md-mpi.c")
 add_definitions("-DMD_PLUGIN_MPIIO")
 
 # GIT VERSIONs:
