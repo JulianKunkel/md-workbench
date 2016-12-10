@@ -6,6 +6,7 @@ compiler: gcc
 
 before_install:
   - export CC=$COMPILER
+  - $CC --version
 
 before_script:
   - sudo update-alternatives --set mpi $MPI
@@ -13,7 +14,9 @@ before_script:
   - cd build
   - cmake ..
 
-script: make
+script:
+  - make
+  - make test
 
 matrix:
   include:
@@ -60,7 +63,7 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-5
-            - mpich
+            - mpich2
       env:
         - MPI=/usr/include/mpich
         - COMPILER=gcc-5
@@ -71,7 +74,7 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-6
-            - mpich
+            - mpich2
       env:
         - MPI=/usr/include/mpich
         - COMPILER=gcc-6
@@ -82,7 +85,7 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-4.8
-            - mpich
+            - mpich2
       env:
         - MPI=/usr/include/mpich
         - COMPILER=gcc-4.8

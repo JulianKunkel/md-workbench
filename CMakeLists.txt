@@ -12,11 +12,12 @@ set(DOC_DIR "${CMAKE_SOURCE_DIR}/doc")
 set(DEPS_DIR "${CMAKE_SOURCE_DIR}/deps")
 set(PLUGIN_DIR "${CMAKE_SOURCE_DIR}/plugins")
 
-
 include(CTest)
 include(FeatureSummary)
 include(CheckCSourceCompiles)
 include(FindPackageHandleStandardArgs)
+
+#### Search for dependencies
 
 find_package(PkgConfig REQUIRED)
 find_package(MPI REQUIRED)
@@ -47,11 +48,6 @@ find_package_handle_standard_args(LIBS3  DEFAULT_MSG  LIBS3_LIBRARIES  LIBS3_INC
 
 include_directories("${CMAKE_SOURCE_DIR}/src" "${CMAKE_SOURCE_DIR}")
 
-# compile flags
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -pedantic -Wall -Wextra -pedantic-errors -Wno-unused-parameter -Werror")
-set (CMAKE_C_FLAGS_DEBUG   "-O0 -g3")
-set (CMAKE_C_FLAGS_RELEASE "-O3")
-
 ## Documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
@@ -63,6 +59,12 @@ if(DOXYGEN_FOUND)
     configure_file(${DOC_DIR}/Doxyfile.in D/home/julian/Dokumente/DKRZ/wr-git/md-real-io/plugin/md-posix.coxyfile @ONLY)
 endif(DOXYGEN_FOUND)
 ##### END Documentation
+
+
+# compile flags
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -pedantic -Wall -Wextra -pedantic-errors -Wno-unused-parameter -Werror")
+set (CMAKE_C_FLAGS_DEBUG   "-O0 -g3")
+set (CMAKE_C_FLAGS_RELEASE "-O3")
 
 
 ## identify which plugins are compilable

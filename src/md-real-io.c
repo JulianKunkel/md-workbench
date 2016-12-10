@@ -487,9 +487,10 @@ static void find_interface(){
       printf("\n");
     }else{
       printf("Could not find plugin for interface: %s\n", o.interface);
+      MPI_Abort(MPI_COMM_WORLD, 1);
     }
-    MPI_Abort(MPI_COMM_WORLD, 1);
   }
+  MPI_Abort(MPI_COMM_WORLD, 0);
 }
 
 static void printTime(){

@@ -9,6 +9,7 @@ Therefore, it results in much less performance than mdtest (10k IOPS vs. 100k IO
 The pattern is derived from an access pattern from the Parabench benchmark that has been used at DKRZ for acceptance testing.
 (see doc/system-load-new-description.pdf for a description of the workload).
 
+
 ## Requirements
 
 The C code needs MPI and is tested with GCC and Intel compilers.
@@ -39,3 +40,9 @@ This example runs 10 processes. It runs in three phases:
    2. Benchmark: each process iterates 3 times: writing a new file, reading and existing file and deleting the file. The offset is a rank offset for the files read and prevents that files are read/deleted by the process that created it.
    3. Cleanup: each process deletes the directories and files it is responsible for.
    A file has the size of 3900 Bytes.
+
+## Testing ##
+
+* Build / unit testing is done using travis: https://travis-ci.org/JulianKunkel/md-real-io
+* CTest ist used for testing, just run "make test" or "ctest"
+  * Results are pushed to: my.cdash.org/index.php?project=md-real-io by using "ctest -D Experimental"

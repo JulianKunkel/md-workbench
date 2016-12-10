@@ -9,3 +9,9 @@ set_target_properties(md-real-io PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
 set_target_properties(md-real-io PROPERTIES COMPILE_FLAGS "${MPI_COMPILE_FLAGS}")
 
 install(TARGETS md-real-io RUNTIME DESTINATION bin)
+
+add_test( NAME dummyRun COMMAND mpiexec -n 2 ./md-real-io -i=dummy )
+add_test( NAME listModules COMMAND mpiexec -n 2 ./md-real-io -i=list )
+
+# complex tests should not be added here. They can be part of the Debug branch such as:
+# add_test( NAME dummyRunDbg CONFIGURATIONS Debug COMMAND mpiexec -n 2 ./md-real-io -i=dummy )
