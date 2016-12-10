@@ -1,3 +1,9 @@
 language: c
-script: cmake
+
+before_script:
+  - ./configure
+  - cd build
+  - cmake ..
+script: make
+
 compiler: gcc
