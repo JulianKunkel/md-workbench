@@ -5,5 +5,13 @@ before_script:
   - cd build
   - cmake ..
 script: make
-
 compiler: gcc
+dist: trusty
+sudo: true
+os: linux
+before_install:
+  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+  - sudo apt-get -qq update
+  - sudo apt-get install -y gcc-5 openmpi-bin libopenmpi-dev
+
+
