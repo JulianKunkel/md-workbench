@@ -19,6 +19,8 @@ script:
   - make test
 
 matrix:
+  exclude:
+    - compiler: gcc
   include:
     - compiler: gcc-5-openmpi
       addons:
