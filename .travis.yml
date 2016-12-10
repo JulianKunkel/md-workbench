@@ -1,46 +1,70 @@
 language: c
+dist: trusty
+sudo: true
+os: linux
 
 before_script:
   - ./configure
   - cd build
   - cmake ..
 script: make
-compiler: gcc
-dist: trusty
-sudo: true
-os: linux
+
+compiler:
+  - gcc-5
+  - gcc-6
+  - gcc-7
+env:
+  - MPI=mpich
+  - MPI=openmpi
+addons:
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
 
 matrix:
   include:
-    - compiler: gcc
+    - compiler: gcc-5
       addons:
         apt:
-          sources:
-            - ubuntu-toolchain-r-test
           packages:
             - gcc-5
-    - compiler: gcc
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - gcc-6
-    - compiler: gcc
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - gcc-7
-    - mpi: openmpi
-      addons:
-        apt:
-          packages:
             - openmpi-bin
             - libopenmpi-dev
-    - mpi: mpich
+      env: MPI=openmpi
+    - compiler: gcc-6
       addons:
         apt:
           packages:
+            - gcc-6
+            - openmpi-bin
+            - libopenmpi-dev
+      env: MPI=openmpi
+    - compiler: gcc-7
+      addons:
+        apt:
+          packages:
+            - gcc-7
+            - openmpi-bin
+            - libopenmpi-dev
+      env: MPI=openmpi
+    - compiler: gcc-5
+      addons:
+        apt:
+          packages:
+            - gcc-5
             - mpich
+      env: MPI=mpich
+    - compiler: gcc-6
+      addons:
+        apt:
+          packages:
+            - gcc-6
+            - mpich
+      env: MPI=mpich
+    - compiler: gcc-7
+      addons:
+        apt:
+          packages:
+            - gcc-7
+            - mpich
+      env: MPI=mpich
