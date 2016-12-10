@@ -63,10 +63,10 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-5
-            - mpich2
+            - mpich
       env:
         - MPI=/usr/include/mpich
-        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/:/usr/lib/x86_64-linux-gnu/pkgconfig/
         - COMPILER=gcc-5
     - compiler: gcc-6-mpich
       addons:
@@ -75,10 +75,10 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-6
-            - mpich2
+            - mpich
       env:
         - MPI=/usr/include/mpich
-        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/:/usr/lib/x86_64-linux-gnu/pkgconfig/
         - COMPILER=gcc-6
     - compiler: gcc-4.8-mpich
       addons:
@@ -87,10 +87,10 @@ matrix:
             - ubuntu-toolchain-r-test
           packages:
             - gcc-4.8
-            - mpich2
+            - mpich
       env:
         - MPI=/usr/include/mpich
-        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/
+        - PKG_CONFIG_PATH=/usr/lib/mpich/lib/pkgconfig/:/usr/lib/x86_64-linux-gnu/pkgconfig/
         - COMPILER=gcc-4.8
   exclude:
     - compiler: gcc
