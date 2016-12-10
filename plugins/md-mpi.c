@@ -180,9 +180,10 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
   }
 
   MPI_Status status;
-  MPI_Count count;
+  //MPI_Count count;
+  int count;
   ret = MPI_File_read(fh, buf, file_size, MPI_BYTE, & status);
-  MPI_Get_elements_x(& status, MPI_BYTE, & count);
+  MPI_Get_elements(& status, MPI_BYTE, & count);
   MPI_File_close(& fh);
   if (ret != MPI_SUCCESS  || (size_t) count != file_size){
     return MD_ERROR_UNKNOWN;
