@@ -1,8 +1,11 @@
 dist: trusty
 sudo: true
 os: linux
+language: c
+compiler: gcc
 
 before_script:
+  - sudo update-alternatives --set mpi $MPI
   - ./configure
   - cd build
   - cmake ..
@@ -11,7 +14,6 @@ script: make
 matrix:
   include:
     - compiler: gcc-5
-      language: c
       addons:
         apt:
           sources:
@@ -20,9 +22,8 @@ matrix:
             - gcc-5
             - openmpi-bin
             - libopenmpi-dev
-      env: MPI=openmpi
+      env: MPI=/usr/lib/openmpi/include
     - compiler: gcc-6
-      language: c
       addons:
         apt:
           sources:
@@ -31,20 +32,18 @@ matrix:
             - gcc-6
             - openmpi-bin
             - libopenmpi-dev
-      env: MPI=openmpi
-    - compiler: gcc-7
-      language: c
+      env: MPI=/usr/lib/openmpi/include
+    - compiler: gcc-4.8
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - gcc-7
+            - gcc-4.8
             - openmpi-bin
             - libopenmpi-dev
-      env: MPI=openmpi
+      env: MPI=/usr/lib/openmpi/include
     - compiler: gcc-5
-      language: c
       addons:
         apt:
           sources:
@@ -52,9 +51,8 @@ matrix:
           packages:
             - gcc-5
             - mpich
-      env: MPI=mpich
+      env: MPI=/usr/include/mpich
     - compiler: gcc-6
-      language: c
       addons:
         apt:
           sources:
@@ -62,14 +60,17 @@ matrix:
           packages:
             - gcc-6
             - mpich
-      env: MPI=mpich
-    - compiler: gcc-7
-      language: c
+      env:
+        MPI=/usr/include/mpich
+    - compiler: gcc-4.8
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - gcc-7
+            - gcc-4.8
             - mpich
-      env: MPI=mpich
+      env: MPI=/usr/include/mpich
+
+  exclude:
+    - compiler: gcc
