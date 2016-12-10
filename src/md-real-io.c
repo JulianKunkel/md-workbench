@@ -17,6 +17,8 @@
 
 #include <mpi.h>
 
+
+#include <time.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
@@ -109,6 +111,9 @@ struct benchmark_options{
   int phase_precreate;
   int phase_benchmark;
 
+  int limit_memory;
+  int limit_memory_between_phases;
+
   int verbosity;
   int process_report;
   int print_pattern;
@@ -195,6 +200,8 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
 static void end_phase(const char * name, phase_stat_t * p, timer start){
   int ret;
   char buff[4096];
+
+  char * limit_memory_P = NULL;
   p->t = stop_timer(start);
   MPI_Barrier(MPI_COMM_WORLD);
   p->t_incl_barrier = stop_timer(start);
@@ -227,6 +234,13 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
       MPI_Send(buff, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
     }
   }
+
+  // allocate if necessary
+  ret = mem_preallocate(& limit_memory_P, o.limit_memory_between_phases, o.verbosity >= 3);
+  if( ret != 0){
+    printf("%d: Error allocating memory!\n", o.rank);
+  }
+  mem_free_preallocated(& limit_memory_P);
 }
 
 void run_precreate(phase_stat_t * s){
@@ -431,14 +445,16 @@ static option_help options [] = {
   {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
   {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
   {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
+  {'m', "lim-free-mem", "Allocate memory until this limit (in MiB) is reached.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory},
+  {'M', "lim-free-mem-phase", "Allocate memory until this limit (in MiB) is reached between the phases, but free it before starting the next phase; the time is NOT included for the phase.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory_between_phases},
   {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
   {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & o.print_pattern},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
-  {0, "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
+  {'R', "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
   {0, "start-index", "Start with this file index in the benchmark; if combined with run-benchmark, this allows to run the benchmark multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.start_index},
-  {0, "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
-  {0, "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
-  {0, "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
+  {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
+  {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
+  {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
   {0, "process-reports", "Independent report per process", OPTION_FLAG, 'd', & o.process_report},
   {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & o.verbosity},
@@ -476,9 +492,9 @@ static void find_interface(){
   }
 }
 
-void printTime(){
+static void printTime(){
     char buff[100];
-    time_t now = time (0);
+    time_t now = time(0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S", localtime (&now));
     printf("%s\n", buff);
 }
@@ -486,6 +502,7 @@ void printTime(){
 int main(int argc, char ** argv){
   int ret;
   int printhelp = 0;
+  char * limit_memory_P = NULL;
 
   init_options();
 
@@ -532,6 +549,7 @@ int main(int argc, char ** argv){
 
   ret = o.plugin->initialize();
   if (ret != MD_SUCCESS){
+    printf("%d: Error initializing module\n", o.rank);
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
@@ -544,7 +562,6 @@ int main(int argc, char ** argv){
     }
   }
 
-
   if ( o.rank == 0 && ! o.quiet_output ){
     // print the set output options
     print_current_options(options);
@@ -552,6 +569,13 @@ int main(int argc, char ** argv){
     print_current_options(o.plugin->get_options());
 
     printf("\n");
+  }
+
+  // preallocate memory if necessary
+  ret = mem_preallocate(& limit_memory_P, o.limit_memory, o.verbosity >= 3);
+  if(ret != 0){
+    printf("%d: Error allocating memory\n", o.rank);
+    MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
   timer bench_start;
@@ -618,6 +642,8 @@ int main(int argc, char ** argv){
     printf("Total runtime: %.0fs time: ", t_all);
     printTime();
   }
+
+  mem_free_preallocated(& limit_memory_P);
 
   MPI_Finalize();
   return 0;
