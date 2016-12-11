@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 
 PARAMETERS="$0 $*"
 CMAKEFLAGS=
@@ -19,7 +19,11 @@ function help(){
 	echo "--verbose                : output the command but do not execute it"
 	echo "--reconfigure           : run configure again with the parameters used the last time"
 	echo "--with-cc=<compiler>    : path to the C compiler"
-	echo "--with-mpi=<file>    : path to MPI"
+	echo "--with-mpi=<dir>    : path to MPI"
+	echo "--with-mpicc=<file>    : path to mpicc"
+	echo "--with-mpic++=<file>    : path to mpic++"
+	echo "--with-mpi-lib=<dir>    : path to MPI libs"
+	echo "--with-mpi-include=<dir>    : path to MPI include"
 	echo "--with-libpq=<dir>      : path to libpq necessary for the postgres plugin"
 	echo "--with-mongoc=<dir>     : path to mongoc library necessary for the mongodb plugin"
 	echo "--with-libs3=<dir>      : path to libs3 library necessary for the Amazon S3 plugin"
@@ -63,7 +67,7 @@ function check(){
 buildDIR="build"
 CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=release"
 
-set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-libs3:,plantuml-jar-dir:,with-mpi:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
+set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-mpic++:,with-mpicc:,with-mpi-lib:,with-mpi-include:,with-libs3:,plantuml-jar-dir:,with-mpi:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
 test $# -lt 1  && exit 1
 while test $# -gt 0
 do
@@ -74,6 +78,10 @@ do
 		--prefix) prefix="$2"; shift;;
 		--debug) CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=debug" ;;
 		--with-cc) CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_C_COMPILER:FILEPATH=$2"; export CC=$2; shift;;
+		--with-mpicc) CMAKEFLAGS="$CMAKEFLAGS -DMPI_C_COMPILER:FILEPATH=$2"; shift;;
+		--with-mpic++) CMAKEFLAGS="$CMAKEFLAGS -DMPI_CXX_COMPILER:FILEPATH=$2"; shift;;
+		--with-mpi-lib) AL="$AL $2"; CMAKEFLAGS="$CMAKEFLAGS  -DMPI_C_LIBRARIES:STRING=$2 -DMPI_CXX_LIBRARIES:STRING=$2"; shift;;
+		--with-mpi-include) AI="$AI $2";  CMAKEFLAGS="$CMAKEFLAGS -DMPI_C_INCLUDE_PATH:STRING=$2 -DMPI_CXX_INCLUDE_PATH:STRING=$2";  shift;;
 		--with-mpi) check "$2" "mpi"; shift;;
 		--with-libpq) check "$2" "libpq"; shift;;
 		--with-mongoc) check "$2" "libmongoc-1.0"; shift;;

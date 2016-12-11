@@ -1,0 +1,51 @@
+#!/bin/bash
+
+BUILD="$1"
+shift
+CLEAN=0
+
+ERROR=0
+
+set -- `getopt -u -l "clean" -o "" -- "$@"`
+test $# -lt 1  && exit 1
+while test $# -gt 0
+do
+	case "$1" in
+		--clean) CLEAN=1;;
+		--) ;;
+		*) echo "Unknown option $1"; exit 1;;
+	esac
+	shift
+done
+
+function runTest(){
+  P=$PATH
+  FLAVOR="$1"
+  MPI_DIR="$2"
+  echo $FLAVOR in $BUILD/$FLAVOR
+  export PATH=$MPI_DIR/bin:$PATH
+  if [[ $CLEAN == 1 ]] ; then
+    echo "Cleaning"
+    rm -rf $BUILD/$FLAVOR
+  fi
+  if [[ ! -e $BUILD/$FLAVOR/CMakeCache.txt ]] ; then
+    ./configure --build-dir=$BUILD/$FLAVOR --debug || exit 1
+  fi
+  pushd $BUILD/$FLAVOR > /dev/null
+  make || exit 1
+
+  make test
+  #if [[ $? != 0 ]] ; then
+  #  cat Testing/Temporary/LastTest.log
+  #fi
+  ERROR=$(($ERROR + $?))
+  popd  > /dev/null
+  PATH=$P
+}
+
+export MPI_ARGS="--allow-run-as-root"
+runTest openmpi /usr/lib64/openmpi/
+export MPI_ARGS=""
+runTest mpich /usr/lib64/mpich
+
+exit $ERROR

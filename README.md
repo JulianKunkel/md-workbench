@@ -18,9 +18,11 @@ See ./compile.sh how to build the benchmark
 Supported plugins add further requirements:
 * postgres: needs the libpq
   * Ubuntu16.04: libpq-dev
-* mongodb: depends on the mongoc and bson
+* mongodb: depends on MongoDB version 1.5.X and mongoc
   * Ubuntu: Install a recent MongoDB https://docs.mongodb.com/v3.2/tutorial/install-mongodb-on-ubuntu/
-   * Update the mongodb driver: http://mongoc.org/libmongoc/1.3.0/installing.html
+   * Update the mongodb driver: http://mongoc.org/libmongoc/1.5.0/installing.html
+
+The test/docker/<SYSTEM> directory contains information how to setup the requirements for various systems.
 
 ## Execution
 
@@ -32,7 +34,7 @@ To see the available options run:
 
 Invocation:
 
-                $ mpiexec -n 10 ./md-real-io -i=posix -P=10 -D=5 -I=3 -S=3900 
+                $ mpiexec -n 10 ./md-real-io -i=posix -P=10 -D=5 -I=3 -S=3900
 
 This example runs 10 processes. It runs in three phases:
 

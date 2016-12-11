@@ -17,6 +17,9 @@ include(FeatureSummary)
 include(CheckCSourceCompiles)
 include(FindPackageHandleStandardArgs)
 
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+
 #### Search for dependencies
 
 find_package(PkgConfig REQUIRED)
@@ -41,6 +44,7 @@ if(NOT LIBS3_VERSION)
   else()
     set(LIBS3_INCLUDE_DIRS "")
     set(LIBS3_LIBRARIES "")
+    set(LIBS3_LDFLAGS "")
   endif()
 endif()
 
