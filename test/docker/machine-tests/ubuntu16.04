@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 BUILD="$1"
 shift
@@ -36,7 +36,7 @@ function runTest(){
   #define the alias
   ln -sf $(which mpiexec.$FLAVOR) /usr/bin/mpiexec
 
-  make test
+  ctest -C debug
   #if [[ $? != 0 ]] ; then
   #  cat Testing/Temporary/LastTest.log
   #fi

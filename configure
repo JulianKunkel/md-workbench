@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 PARAMETERS="$0 $*"
 CMAKEFLAGS=
@@ -48,13 +48,13 @@ function check(){
 	what=$2
 	if [[ ! -e "$where" ]] ; then
 		echo "Error could not find $what in $where ; directory does not exist"
-		exit 1	
+		exit 1
 	fi
 	export PKG_CONFIG_PATH=$where/lib/pkgconfig/:$PKG_CONFIG_PATH
 	#does not ship with pkg-config
 	pkg-config --exists $what
 	if [ $? != 0 ] ; then
-		if [[ -e $where/include && -e $where/lib ]] ; then 
+		if [[ -e $where/include && -e $where/lib ]] ; then
 			AI="$AI $where/include"
 			AL="$AL $where/lib"
 		else
@@ -66,6 +66,7 @@ function check(){
 
 buildDIR="build"
 CMAKEFLAGS="$CMAKEFLAGS -DCMAKE_BUILD_TYPE:STRING=release"
+
 
 set -- `getopt -u -l "help,version,debug,reconfigure,prefix:,with-cc:,with-mongoc:,with-mpic++:,with-mpicc:,with-mpi-lib:,with-mpi-include:,with-libs3:,plantuml-jar-dir:,with-mpi:,with-libpq:,verbose,build-dir:" -o "hV" -- "$@"`
 test $# -lt 1  && exit 1
@@ -83,7 +84,7 @@ do
 		--with-mpi-lib) AL="$AL $2"; CMAKEFLAGS="$CMAKEFLAGS  -DMPI_C_LIBRARIES:STRING=$2 -DMPI_CXX_LIBRARIES:STRING=$2"; shift;;
 		--with-mpi-include) AI="$AI $2";  CMAKEFLAGS="$CMAKEFLAGS -DMPI_C_INCLUDE_PATH:STRING=$2 -DMPI_CXX_INCLUDE_PATH:STRING=$2";  shift;;
 		--with-mpi) check "$2" "mpi"; shift;;
-		--with-libpq) check "$2" "libpq"; shift;;
+		--with-libpq) check "$2" "libpq"; PQ=1; shift;;
 		--with-mongoc) check "$2" "libmongoc-1.0"; shift;;
 		--with-libs3) check "$2" "libs3"; shift;;
 		--build-dir) buildDIR="$2"; shift;;
@@ -94,6 +95,12 @@ do
 	esac
 	shift
 done
+
+if [[ "$PQ" == "" ]] ; then
+	if [[ $(pg_config --version 2>/dev/null) != "" ]] ; then
+		CMAKEFLAGS="$CMAKEFLAGS -DLIBPQ_LIBDIR:INTERNAL="$(pg_config --libdir)" -DLIBPQ_INCLUDE_DIRS="$(pg_config --includedir)" -DLIBPQ_LIBS:INTERNAL=pq -DLIBPQ_LIBRARIES:INTERNAL=pq -DLIBPQ_VERSION=$(pg_config --version | cut -d " " -f 2)"
+	fi
+fi
 
 echo $PARAMETERS > configure.log
 

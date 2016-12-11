@@ -30,7 +30,7 @@ Stat checks that the file size matches our expected file size
 #include <stdlib.h>
 #include <string.h>
 
-#include <postgresql/libpq-fe.h>
+#include <libpq-fe.h>
 
 #include <plugins/md-postgres.h>
 

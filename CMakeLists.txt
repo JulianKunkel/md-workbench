@@ -21,6 +21,7 @@ SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 SET(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 #### Search for dependencies
+# set(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH} /usr/lib64 /usr/local/lib64 /usr/local/lib)
 
 find_package(PkgConfig REQUIRED)
 find_package(MPI REQUIRED)
@@ -29,7 +30,9 @@ pkg_search_module(MONGOC libmongoc-1.0>=1.40)
 pkg_check_modules(MONGOC QUIET libmongoc-1.0)
 find_package_handle_standard_args(MONGOC  DEFAULT_MSG  MONGOC_LIBRARIES  MONGOC_INCLUDE_DIRS)
 
-pkg_search_module(LIBPQ libpq)
+if(NOT LIBPQ_VERSION)
+  pkg_search_module(LIBPQ libpq)
+endif()
 pkg_check_modules(LIBPQ QUIET pq)
 find_package_handle_standard_args(LIBPQ  DEFAULT_MSG  LIBPQ_LIBRARIES  LIBPQ_INCLUDE_DIRS)
 
