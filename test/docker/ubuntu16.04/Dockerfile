@@ -17,3 +17,7 @@ RUN apt-get install -y mongodb-org libsasl2-dev
 RUN wget https://github.com/mongodb/mongo-c-driver/releases/download/1.5.0/mongo-c-driver-1.5.0.tar.gz
 RUN tar xzf mongo-c-driver-1.5.0.tar.gz
 RUN cd mongo-c-driver-1.5.0 ; ./configure ; make -j 4 install
+
+# LIBS3 TESTS
+RUN apt-get install -y libs3-dev
+
