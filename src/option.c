@@ -44,6 +44,7 @@ static int print_value(option_help * o){
         pos += printf("=%d ", *(int*) o->variable);
         break;
       }
+      case('H'):
       case('s'):{
         if ( *(char**) o->variable != NULL &&  ((char**) o->variable)[0][0] != 0 ){
           pos += printf("=%s", *(char**) o->variable);
@@ -156,6 +157,10 @@ static int print_option_value(option_help * o){
       }
       case('d'):{
         pos += printf("=%d ", *(int*) o->variable);
+        break;
+      }
+      case('H'):{
+        pos += printf("=HIDDEN");
         break;
       }
       case('s'):{
@@ -288,6 +293,7 @@ int parseOptions(int argc, char ** argv, option_help * args, int * printhelp){
                 *(int*) o->variable = atoi(arg);
                 break;
               }
+              case('H'):
               case('s'):{
                 (*(char **) o->variable) = strdup(arg);
                 break;

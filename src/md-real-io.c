@@ -343,7 +343,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       ret = o.plugin->def_dset_name(dset, writeRank, d);
 
       if (o.verbosity >= 2)
-        printf("%d Create %s \n", o.rank, dset);
+        printf("%d write %s:%s \n", o.rank, dset, obj_name);
 
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
@@ -369,6 +369,9 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->def_dset_name(dset, readRank, d);
 
+      if (o.verbosity >= 2){
+        printf("%d: stat %s:%s \n", o.rank, dset, obj_name);
+      }
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
@@ -379,7 +382,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       s->obj_stat.suc++;
 
       if (o.verbosity >= 2){
-        printf("%d: Access %s \n", o.rank, dset);
+        printf("%d: read %s:%s \n", o.rank, dset, obj_name);
       }
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
       if (ret == MD_SUCCESS){
@@ -392,15 +395,18 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }else{
         printf("%d: Error while reading the file %s (%s)\n", o.rank, dset, strerror(errno));
         s->obj_read.err++;
-        continue;
       }
 
+      if (o.verbosity >= 2){
+        printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
+      }
       o.plugin->delete_obj(dset, obj_name);
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
       }else if (ret == MD_NOOP){
         // nothing to do
       }else{
+        printf("%d: Error while deleting the object %s:%s\n", o.rank, dset, obj_name);
         s->obj_delete.err++;
       }
     }

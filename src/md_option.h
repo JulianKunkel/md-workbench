@@ -30,7 +30,7 @@ typedef struct{
   char * help;
 
   option_value_type arg;
-  char type;  // data type
+  char type;  // data type, H = hidden string
   void * variable;
 } option_help;
 
