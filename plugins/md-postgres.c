@@ -49,7 +49,7 @@ static option_help options [] = {
   {'H', "host", "Host name.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
   {'O', NULL, "Postgres options (see conninfo)", OPTION_OPTIONAL_ARGUMENT, 's', & pq_options},
   {'T', "table-name", "Name of the table", OPTION_OPTIONAL_ARGUMENT, 's', & tbl_name},
-  {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 's', & password},
+  {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 'H', & password},
   {'t', "use-table-per-tbl_name", "Create one table per tbl_nameectory, otherwise a global table is used", OPTION_FLAG, 'd', & table_per_dset},
   LAST_OPTION
 };

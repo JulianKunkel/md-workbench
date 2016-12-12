@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <string.h>
 
 #include <libs3.h>
 
@@ -29,12 +30,20 @@ static int bucket_per_set = 0;
 static char * access_key = NULL;
 static char * secret_key = NULL;
 static char * host = NULL;
+static char * bucket_prefix = "mdrealio";
+static char * locationConstraint = NULL;
+
+static int dont_suffix = 0;
+
+static S3BucketContext bucket_context = {NULL};
 
 static option_help options [] = {
   {'b', "bucket-per-set", "Use one bucket to map a set, otherwise only one bucket is used.", OPTION_FLAG, 'd', & bucket_per_set},
-  {'H', "host", "The host.", OPTION_REQUIRED_ARGUMENT, 's', & host},
-  {'s', "secret-key", "The secret key.", OPTION_REQUIRED_ARGUMENT, 's', & secret_key},
-  {'a', "access-key", "The access key.", OPTION_REQUIRED_ARGUMENT, 's', & access_key},
+  {'B', "bucket-name-prefix", "The name of the bucket (when using without -b), otherwise it is used as prefix.", OPTION_OPTIONAL_ARGUMENT, 's', & bucket_prefix},
+  {'p', "dont-suffix-bucket", "If not selected, then a hash will be added to the bucket name to increase uniqueness.", OPTION_FLAG, 'd', & dont_suffix },
+  {'H', "host", "The host.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
+  {'s', "secret-key", "The secret key.", OPTION_REQUIRED_ARGUMENT, 'H', & secret_key},
+  {'a', "access-key", "The access key.", OPTION_REQUIRED_ARGUMENT, 'H', & access_key},
   LAST_OPTION
 };
 
@@ -43,7 +52,30 @@ static option_help * get_options(){
 }
 
 static int initialize(){
-  int ret = S3_initialize("s3", S3_INIT_ALL, host);
+  int ret = S3_initialize(NULL, S3_INIT_ALL, host);
+
+  // create a bucket id based on access-key using a trivial checksumming
+  if(! dont_suffix){
+    uint64_t c = 0;
+    char * r = access_key;
+    for(uint64_t pos = 1; (*r) != '\0' ; r++, pos*=10) {
+      c += (*r) * pos;
+    }
+    int count = snprintf(NULL, 0, "%s%lu", bucket_prefix, c);
+    char * old_prefix = bucket_prefix;
+    bucket_prefix = malloc(count + 1);
+    sprintf(bucket_prefix, "%s%lu", old_prefix, c);
+  }
+
+  // init bucket context
+  memset(&bucket_context, 0, sizeof(bucket_context));
+  bucket_context.hostName = host;
+  bucket_context.bucketName = bucket_prefix;
+  bucket_context.protocol = S3ProtocolHTTP;
+  bucket_context.uriStyle = S3UriStylePath;
+  bucket_context.accessKeyId = access_key;
+  bucket_context.secretAccessKey = secret_key;
+
   if ( ret == S3StatusOK ){
     return MD_SUCCESS;
   }
@@ -56,16 +88,61 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
+static int def_dset_name(char * out_name, int n, int d){
+  // S3_MAX_BUCKET_NAME_SIZE
+  if (bucket_per_set){
+    sprintf(out_name, "%sx%dx%d", bucket_prefix, n, d);
+  }else{
+    sprintf(out_name, "%s", bucket_prefix);
+  }
+  return MD_SUCCESS;
+}
+
+static int def_obj_name(char * out_name, int n, int d, int i){
+  // S3_MAX_KEY_SIZE
+  if (bucket_per_set){
+    sprintf(out_name, "%d", i);
+  }else{
+    sprintf(out_name, "%d_%d_%d", n, d, i);
+  }
+  return MD_SUCCESS;
+}
+
+
+static S3Status s3status = S3StatusInterrupted;
+static S3ErrorDetails s3error = {NULL};
+
+static S3Status responsePropertiesCallback(const S3ResponseProperties *properties, void *callbackData){
+  s3status = S3StatusOK;
+  return s3status;
+}
+
+static void responseCompleteCallback(S3Status status, const S3ErrorDetails *error, void *callbackData) {
+  s3status = status;
+  if (error == NULL){
+    s3error.message = NULL;
+  }else{
+    s3error = *error;
+  }
+  return;
+}
+
+#define CHECK_ERROR if (s3status != S3StatusOK){ printf("Error \"%s\": %s - %s\n", S3_get_status_name(s3status), s3error.message, s3error.furtherDetails); return MD_ERROR_UNKNOWN; }
+
+static S3ResponseHandler responseHandler = {  &responsePropertiesCallback, &responseCompleteCallback };
 
 static int prepare_global(){
   if (! bucket_per_set){
     // check if the bucket exists, otherwise create it
 
-    // S3_test_bucket
-    // S3_create_bucket
-
-    // S3_MAX_BUCKET_NAME_SIZE
-    // S3_MAX_KEY_SIZE
+    S3_test_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    if (s3status != S3StatusErrorNoSuchBucket){
+       printf("Error, the bucket %s already exists\n", bucket_prefix);
+       return MD_ERROR_UNKNOWN;
+    }
+    S3_create_bucket(S3ProtocolHTTP, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    CHECK_ERROR
+    return MD_SUCCESS;
   }
 
   return MD_NOOP;
@@ -73,88 +150,121 @@ static int prepare_global(){
 
 static int purge_global(){
   if (! bucket_per_set){
-    // S3_delete_bucket
+    S3_delete_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, NULL,  & responseHandler, NULL);
+    CHECK_ERROR
+    return MD_SUCCESS;
   }
-  return rmdir(dir);
+  return MD_NOOP;
 }
 
-static int create_dir(char * filename, char * prefix, int rank, int iteration){
+
+static int create_dset(char * name){
   if (bucket_per_set){
-    // create bucket
+    S3_create_bucket(S3ProtocolHTTP, access_key, secret_key, NULL, name, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    CHECK_ERROR
+    return MD_SUCCESS;
   }else{
     return MD_NOOP;
   }
-
-  sprintf(filename, "%s/%d/%d", prefix, rank, iteration);
-  return mkdir(filename, 0755);
 }
 
-static int rm_dir(char * filename, char * prefix, int rank, int iteration){
+static int rm_dset(char * name){
   if (bucket_per_set){
-    // delete bucket
+    S3_delete_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, name, NULL,  & responseHandler, NULL);
+    CHECK_ERROR
+    return MD_SUCCESS;
   }else{
     return MD_NOOP;
   }
-
-  sprintf(filename, "%s/%d/%d", prefix, rank, iteration);
-  return rmdir(filename);
 }
 
-static S3BucketContext * chooseBucket(char * prefix, int rank, int dir, int iteration){
+S3BucketContext * getBucket(char * objname){
   if (bucket_per_set){
     // choose the set bucket
+    bucket_context.bucketName = objname;
+    return & bucket_context;
   }else{
     // choose the global bucket
+    return & bucket_context;
   }
 }
 
-static int write_file(char * filename, char * buf, size_t file_size,  char * prefix, int rank, int dir, int iteration){
-  S3BucketContext * bucket = chooseBucket(prefix, rank, dir, iteration);
-  // S3_put_object
-  int ret;
-  int fd;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
-  fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
-  if (fd == -1) return MD_ERROR_CREATE;
-  ret = write(fd, buf, file_size);
-  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
-  close(fd);
-  return ret;
+struct data_handling{
+  char * buf;
+  int64_t size;
+};
+
+static int putObjectDataCallback(int bufferSize, char *buffer, void *callbackData){
+  struct data_handling * dh = (struct data_handling *) callbackData;
+  const int64_t size = dh->size > bufferSize ? bufferSize : dh->size;
+  memcpy(buffer, dh->buf, size);
+  dh->buf += size;
+  dh->size -= size;
+
+  return size;
 }
 
+static S3PutObjectHandler putObjectHandler = { {  &responsePropertiesCallback, &responseCompleteCallback }, & putObjectDataCallback };
 
-static int read_file(char * filename, char * buf, size_t file_size,  char * prefix, int rank, int dir, int iteration){
-  S3BucketContext * bucket = chooseBucket(prefix, rank, dir, iteration);
-  // S3_get_object
-  int fd;
-  int ret;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
-  fd = open(filename, O_RDWR);
-  if (fd == -1) return MD_ERROR_FIND;
-  ret = read(fd, buf, file_size);
-  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
-  close(fd);
-  return ret;
-}
+static int write_obj(char * bucket_name, char * obj_name, char * buf, size_t obj_size){
+  struct data_handling dh = { .buf = buf, .size = obj_size };
+  S3BucketContext * bucket = getBucket(bucket_name);
+  S3_put_object(bucket, obj_name, obj_size, NULL, NULL, &putObjectHandler, & dh);
+  CHECK_ERROR
 
-static int stat_file(char * filename, char * prefix, int rank, int dir, int iteration, int file_size){
-  S3BucketContext * bucket = chooseBucket(prefix, rank, dir, iteration);
-  // how to ? Should use HEAD request, S3_head_object (?) or use S3_get_object with size = 1, offset = 0 ?
-  struct stat file_stats;
-  int ret;
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
-  ret = stat(filename, & file_stats);
-  if ( ret != 0 ){
-    return MD_ERROR_FIND;
-  }
   return MD_SUCCESS;
 }
 
-static int delete_file(char * filename, char * prefix, int rank, int dir, int iteration){
-  S3BucketContext * bucket = chooseBucket(prefix, rank, dir, iteration);
-  // S3_delete_object
-  sprintf(filename, "%s/%d/%d/file-%d", prefix, rank, dir, iteration);
-  return unlink(filename);
+static S3Status getObjectDataCallback(int bufferSize, const char *buffer,  void *callbackData){
+  struct data_handling * dh = (struct data_handling *) callbackData;
+  const int64_t size = dh->size > bufferSize ? bufferSize : dh->size;
+  memcpy(dh->buf, buffer, size);
+  dh->buf += size;
+  dh->size -= size;
+
+  return S3StatusOK;
+}
+
+static S3GetObjectHandler getObjectHandler = { {  &responsePropertiesCallback, &responseCompleteCallback }, & getObjectDataCallback };
+
+static int read_obj(char * bucket_name, char * obj_name, char * buf, size_t obj_size){
+  S3BucketContext * bucket = getBucket(bucket_name);
+  struct data_handling dh = { .buf = buf, .size = obj_size };
+  S3_get_object(bucket, obj_name, NULL, 0, obj_size, NULL, &getObjectHandler, & dh);
+  CHECK_ERROR
+
+  return MD_SUCCESS;
+}
+
+static S3Status statResponsePropertiesCallback(const S3ResponseProperties *properties, void *callbackData){
+  // check the size
+  size_t * obj_size = (size_t*) callbackData;
+  if(*obj_size != properties->contentLength){
+    //printf("%lu %lu\n",*obj_size, properties->contentLength);
+     s3status = -1;
+    return s3status;
+  }
+  s3status = S3StatusOK;
+  return s3status;
+}
+
+static S3ResponseHandler statResponseHandler = {  &statResponsePropertiesCallback, &responseCompleteCallback };
+
+
+static int stat_obj(char * bucket_name, char * obj_name, size_t obj_size){
+  // how to ? Should use HEAD request, S3_head_object (?) or use S3_get_object with size = 1, offset = 0 ?
+  S3BucketContext * bucket = getBucket(bucket_name);
+  S3_head_object(bucket, obj_name, NULL, & statResponseHandler, & obj_size);
+  CHECK_ERROR
+  return MD_SUCCESS;
+}
+
+static int delete_obj(char * bucket_name, char * obj_name){
+  S3BucketContext * bucket = getBucket(bucket_name);
+
+  S3_delete_object(bucket, obj_name, NULL, & responseHandler, NULL);
+  CHECK_ERROR
+  return MD_SUCCESS;
 }
 
 

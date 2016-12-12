@@ -36,7 +36,7 @@ static option_help options [] = {
   {'U', "user", "User name to access the database.", OPTION_OPTIONAL_ARGUMENT, 's', & username},
   {'H', "host", "Host name.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
   {'p', "port", "Port.", OPTION_OPTIONAL_ARGUMENT, 'd', & port},
-  {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 's', & password},
+  {'P', "password", "Passwort, if empty no password is assumed.", OPTION_OPTIONAL_ARGUMENT, 'H', & password},
   {'i', "no-index", "Create no index on the obj name.", OPTION_FLAG, 'd', & create_no_index},
   {'c', "use-collection-per-dir", "Create one collection per directory, otherwise a global collection is used", OPTION_FLAG, 'd', & collection_per_dir},
   LAST_OPTION
