@@ -1,0 +1,7 @@
+System: CentOS 7
+Kernel: 3.10.0-327.36.3.el7.x86_64 x86_64 GNU/Linux
+CPU: Intel(R) Xeon(R) CPU E31275 @ 3.40GHz (8 cores)
+Memory: 16 GByte
+Block devices: 
+* SSD: INTEL SA2CW160G3
+* HDD: WDC WD20EARS-07M

@@ -146,13 +146,13 @@ static int sum_err(phase_stat_t * p){
   return p->dset_name.err + p->dset_create.err +  p->dset_delete.err + p->obj_name.err + p->obj_create.err + p->obj_read.err + p->obj_stat.err + p->obj_delete.err;
 }
 
-static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
-  const double tp = (uint64_t)(p->obj_create.suc + p->obj_read.suc) * o.file_size / p->t_incl_barrier / 1024 / 1024;
+static void print_p_stat(char * buff, const char * name, phase_stat_t * p, double t){
+  const double tp = (uint64_t)(p->obj_create.suc + p->obj_read.suc) * o.file_size / t / 1024 / 1024;
 
   const int errs = sum_err(p);
 
   if (o.print_detailed_stats){
-    sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, p->t_incl_barrier, tp);
+    sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, t, tp);
 
     if (errs > 0){
       sprintf(buff, "%s err\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d", name, p->dset_name.err, p->dset_create.err,  p->dset_delete.err, p->obj_name.err, p->obj_create.err, p->obj_read.err, p->obj_stat.err, p->obj_delete.err);
@@ -162,25 +162,25 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p){
     // single line
     switch(name[0]){
       case('b'):
-        pos = sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, t,
           p->obj_create.suc,
-          p->obj_create.suc / p->t_incl_barrier,
+          p->obj_create.suc / t,
           tp);
         break;
       case('p'):
-        pos = sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, t,
           p->dset_create.suc,
           p->obj_create.suc,
-          p->dset_create.suc / p->t_incl_barrier,
-          p->obj_create.suc / p->t_incl_barrier,
+          p->dset_create.suc / t,
+          p->obj_create.suc / t,
           tp);
         break;
       case('c'):
-        pos = sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, p->t_incl_barrier,
+        pos = sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, t,
           p->obj_delete.suc,
           p->dset_delete.suc,
-          p->obj_delete.suc / p->t_incl_barrier,
-          p->dset_delete.suc / p->t_incl_barrier);
+          p->obj_delete.suc / t,
+          p->dset_delete.suc / t);
         break;
       default:
         pos = sprintf(buff, "%s: unknown phase", name);
@@ -217,20 +217,20 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
 
   if (o.rank == 0){
     //print the stats:
-    print_p_stat(buff, name, & g_stat);
+    print_p_stat(buff, name, & g_stat, g_stat.t_incl_barrier);
     printf("%s\n", buff);
   }
 
   if(o.process_report){
     if(o.rank == 0){
-      print_p_stat(buff, name, p);
+      print_p_stat(buff, name, p, p->t);
       printf("0: %s\n", buff);
       for(int i=1; i < o.size; i++){
         MPI_Recv(buff, 4096, MPI_CHAR, i, 4711, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         printf("%d: %s\n", i, buff);
       }
     }else{
-      print_p_stat(buff, name, p);
+      print_p_stat(buff, name, p, p->t);
       MPI_Send(buff, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
     }
   }
