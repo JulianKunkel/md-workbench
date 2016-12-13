@@ -16,15 +16,20 @@
 // Author: Julian Kunkel
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include <plugins/md-dummy.h>
 
 static int fake_errors = 0;
+static int fake_sleep_time_us = 0;
 
 static option_help options [] = {
   {'f', "fake-errors", "Fake errors while running benchmark, best to use with --ignore-precreate-errors.", OPTION_FLAG, 'd', & fake_errors},
+  {'s', "fake-sleep-us", "Add X us to each write/read/delete operation on process 0.", OPTION_OPTIONAL_ARGUMENT, 'd', & fake_sleep_time_us},
   LAST_OPTION
 };
+
+static int rank0 = 0;
 
 static option_help * get_options(){
   return options;
@@ -40,6 +45,7 @@ static int finalize(){
 
 
 static int prepare_global(){
+  rank0 = 1;
   return MD_SUCCESS;
 }
 
@@ -51,6 +57,7 @@ static int def_dset_name(char * out_name, int n, int d){
   sprintf(out_name, "n=%d/d=%d", n, d);
   return MD_SUCCESS;
 }
+
 
 static int def_obj_name(char * out_name, int n, int d, int i){
   sprintf(out_name, "n=%d/d=%d/i=%d", n, d, i);
@@ -66,6 +73,9 @@ static int rm_dset(char * filename){
 }
 
 static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
+  if (rank0 == 1 && fake_sleep_time_us != 0){
+    usleep(fake_sleep_time_us);
+  }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
   }
@@ -74,6 +84,9 @@ static int write_obj(char * dirname, char * filename, char * buf, size_t file_si
 
 
 static int read_obj(char * dirname, char * filename, char * buf, size_t file_size){
+  if (rank0 == 1 && fake_sleep_time_us != 0){
+    usleep(fake_sleep_time_us);
+  }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
   }
@@ -88,6 +101,9 @@ static int stat_obj(char * dirname, char * filename, size_t file_size){
 }
 
 static int delete_obj(char * dirname, char * filename){
+  if (rank0 == 1 && fake_sleep_time_us != 0){
+    usleep(fake_sleep_time_us);
+  }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
   }
