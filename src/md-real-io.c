@@ -147,7 +147,7 @@ static int sum_err(phase_stat_t * p){
 }
 
 static void print_p_stat(char * buff, const char * name, phase_stat_t * p, double t){
-  const double tp = (uint64_t)(p->obj_create.suc + p->obj_read.suc) * o.file_size / t / 1024 / 1024;
+  const double tp = (double)(p->obj_create.suc + p->obj_read.suc) * o.file_size / t / 1024 / 1024;
 
   const int errs = sum_err(p);
 
@@ -563,7 +563,7 @@ int main(int argc, char ** argv){
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
   if (o.rank == 0 && ! o.quiet_output){
-    printf("MD-REAL-IO total objects: %zu workingset size: %.3f MiB (version: %s) time: ", total_obj_count, o.size * o.dset_count * o.precreate * o.file_size / 1024.0 / 1024.0,  VERSION);
+    printf("MD-REAL-IO total objects: %zu workingset size: %.3f MiB (version: %s) time: ", total_obj_count, ((double) o.size) * o.dset_count * o.precreate * o.file_size / 1024.0 / 1024.0,  VERSION);
     printTime();
     if(o.num > o.precreate){
       printf("WARNING: num > precreate, this may cause the situation that no objects are available to read\n");
