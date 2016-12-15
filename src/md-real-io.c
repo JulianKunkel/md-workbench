@@ -563,7 +563,7 @@ int main(int argc, char ** argv){
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
   if (o.rank == 0 && ! o.quiet_output){
-    printf("MD-REAL-IO total objects: %zu (version: %s) time: ", total_obj_count, VERSION);
+    printf("MD-REAL-IO total objects: %zu workingset size: %.3f MiB (version: %s) time: ", total_obj_count, o.size * o.dset_count * o.precreate * o.file_size / 1024.0 / 1024.0,  VERSION);
     printTime();
     if(o.num > o.precreate){
       printf("WARNING: num > precreate, this may cause the situation that no objects are available to read\n");
@@ -647,7 +647,7 @@ int main(int argc, char ** argv){
     printf("Error while finalization of module\n");
   }
   if (o.rank == 0 && ! o.quiet_output){
-    printf("Total runtime: %.0fs time: ", t_all);
+    printf("Total runtime: %.0fs time: ",  t_all);
     printTime();
   }
 
