@@ -22,7 +22,7 @@ function runBenchmark(){
 		mount $DEVICE $OPTIONS /mnt/test || exit 1
 		for M in 1000 ; do
 			for N in 1 2 3 4 5 6 7 8 10 12 15 ; do
-				FILE=/home/kunkel/benchmarks/md-real-io/$NAME-$fs-$M-$N.txt
+				FILE=/home/kunkel/benchmarks/md-real-io/$NAME-$fs-${M}bigger--$N.txt
 				if [[ ! -e $FILE ]] ; then
 					mpiexec -n $N $BENCH -P=$((500000/$N)) -I=10000 -i=posix -m=$M -R=5 --process-reports -- -D=/mnt/test/out > $FILE 2>&1
 				fi
@@ -36,5 +36,3 @@ mkdir /mnt/test || exit 1
 
 runBenchmark "HDD" "/dev/sdc1" "-o relatime"
 runBenchmark "SSD" "/dev/sdd1" "-o discard,relatime"
-
-runBenchmark "HDD" "/dev/sdc1" "-o relatime"
