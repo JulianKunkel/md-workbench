@@ -1,7 +1,10 @@
 #!/bin/bash
 
+mkdir -p ../../build-docker
+
 ARGS=" /data/test/docker/run-machine-test.sh $@"
-OPT="-it --rm -u $(id -u):$(id -g) -v $PWD/../../:/data/"
+UD="-u $(id -u):$(id -g)"
+OPT="-it --rm -v $PWD/../../:/data/"
 ERROR=0
 docker run $OPT -h ubuntu14.04 kunkel/md-real-io:ubuntu14.04 $ARGS
 ERROR=$(($ERROR+$?))
