@@ -148,6 +148,14 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
+static int current_index(){
+  return 0;
+}
+
+static void store_position(int pos){
+  return;
+}
+
 static int def_dset_name(char * out_name, int n, int d){
   if(collection_per_dir){
     sprintf(out_name, "%s_%d_%d", global_coll_name, n, d);
@@ -315,6 +323,8 @@ struct md_plugin md_plugin_mongo = {
   finalize,
   prepare_global,
   purge_global,
+  current_index,
+  store_position,
 
   def_dset_name,
   create_dset,

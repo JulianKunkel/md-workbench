@@ -106,7 +106,6 @@ struct benchmark_options{
   int iterations;
   int file_size;
 
-  int start_index;
   int phase_cleanup;
   int phase_precreate;
   int phase_benchmark;
@@ -423,7 +422,7 @@ void run_cleanup(phase_stat_t * s, int start_index){
     ret = o.plugin->def_dset_name(dset, o.rank, d);
 
     for(int f=0; f < o.precreate; f++){
-      ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + o.num + start_index);
+      ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + start_index);
       ret = o.plugin->delete_obj(dset, obj_name);
       if (ret == MD_NOOP){
         // nothing to do
@@ -457,7 +456,6 @@ static option_help options [] = {
   {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & o.print_pattern},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
   {'R', "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
-  {0, "start-index", "Start with this file index in the benchmark; if combined with run-benchmark, this allows to run the benchmark multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.start_index},
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
@@ -550,15 +548,16 @@ int main(int argc, char ** argv){
     // enable all phases
     o.phase_cleanup = o.phase_precreate = o.phase_benchmark = 1;
   }
-  if ( o.start_index > 0 && o.phase_precreate ){
-    printf("The option start_index cannot be used with pre-create!");
-    MPI_Abort(MPI_COMM_WORLD, 1);
-  }
 
   ret = o.plugin->initialize();
   if (ret != MD_SUCCESS){
     printf("%d: Error initializing module\n", o.rank);
     MPI_Abort(MPI_COMM_WORLD, 1);
+  }
+
+  int current_index = 0;
+  if ( (o.phase_cleanup || o.phase_benchmark) && ! o.phase_precreate ){
+    current_index = o.plugin->return_position();
   }
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
@@ -612,8 +611,6 @@ int main(int argc, char ** argv){
     end_phase("precreate", & phase_stats, tmp);
   }
 
-  int current_index = o.start_index;
-
   if (o.phase_benchmark){
     // benchmark phase
     for(int i=0; i < o.iterations; i++){
@@ -623,7 +620,6 @@ int main(int argc, char ** argv){
       current_index += o.num;
       end_phase("benchmark", & phase_stats, tmp);
     }
-    current_index -= o.num;
   }
 
   // cleanup phase
@@ -639,6 +635,8 @@ int main(int argc, char ** argv){
         printf("Rank 0: Error purging the global environment\n");
       }
     }
+  }else{
+    o.plugin->store_position(current_index);
   }
 
   double t_all = stop_timer(bench_start);

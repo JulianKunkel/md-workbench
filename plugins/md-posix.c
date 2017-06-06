@@ -22,10 +22,12 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 
 #include <plugins/md-posix.h>
 
 static char * dir = "out";
+static int created_root_dir = 0;
 
 static option_help options [] = {
   {'D', "root-dir", "Root directory", OPTION_OPTIONAL_ARGUMENT, 's', & dir},
@@ -44,18 +46,73 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
+static int current_index(){
+  char name[4096];
+  sprintf(name, "%s/index", dir);
+  int fd = open(name, O_RDONLY);
+  if (fd < 0){
+    return 0;
+  }
+  int pos;
+  int ret = read(fd, & pos, sizeof(int));
+  close(fd);
+  if (ret != sizeof(int) || pos < 0){
+    printf("WARN: Stored position < 0\n");
+    return 0;
+  }
+
+  return pos;
+}
+
+static void store_position(int pos){
+  char name[4096];
+  sprintf(name, "%s/index", dir);
+  int fd = open(name, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+  int ret = write(fd, & pos, sizeof(int));
+  close(fd);
+  if (ret != sizeof(int)){
+    printf("WARN: could not update index\n");
+  }
+}
 
 static int prepare_global(){
   int ret = mkdir(dir, 0755);
   if(ret != 0){
-    printf("Could not create the directory: %s; error: %s\n", dir, strerror(errno));
+    // check if the directory is empty
+    DIR * d = opendir(dir);
+    if( d == NULL ) goto err;
+    struct dirent * entry;
+    int i;
+    for(i=0; i < 10; i++){
+      entry = readdir(d);
+      if(entry == NULL){
+        break;
+      }
+    }
+    closedir(d);
+
+    if (i == 2){
+      printf("WARN: Will use the existing (empty) directory\n");
+      return MD_SUCCESS;
+    }
+    err:
+    printf("ERROR: Could not create the directory: %s; error: %s\n", dir, strerror(errno));
     return MD_ERROR_UNKNOWN;
   }
+  created_root_dir = 1;
   return MD_SUCCESS;
 }
 
 static int purge_global(){
-  return rmdir(dir);
+  // delete index file
+  char name[4096];
+  sprintf(name, "%s/index", dir);
+  unlink(name);
+
+  if(created_root_dir){
+    return rmdir(dir);
+  }
+  return MD_SUCCESS;
 }
 
 static int def_dset_name(char * out_name, int n, int d){
@@ -123,6 +180,8 @@ struct md_plugin md_plugin_posix = {
   finalize,
   prepare_global,
   purge_global,
+  current_index,
+  store_position,
 
   def_dset_name,
   create_dset,
