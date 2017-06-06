@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <plugins/md-dummy.h>
+#include <md_util.h>
 
 static int fake_errors = 0;
 static int fake_sleep_time_us = 0;
@@ -35,6 +36,16 @@ static int rank0 = 0;
 
 static option_help * get_options(){
   return options;
+}
+
+static void spin_sleep(int usec){
+  timer start;
+  start_timer(& start);
+  double waittime = ((double) usec) / 1000 / 1000;
+  while(1){
+    double t = stop_timer(start);
+    if ( t > waittime) return;
+  }
 }
 
 static int initialize(){
@@ -93,7 +104,7 @@ static int write_obj(char * dirname, char * filename, char * buf, size_t file_si
     printf("write obj: %s\n", filename);
   }
   if (rank0 == 1 && fake_sleep_time_us != 0){
-    usleep(fake_sleep_time_us);
+    spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
@@ -107,7 +118,7 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
     printf("read obj: %s\n", filename);
   }
   if (rank0 == 1 && fake_sleep_time_us != 0){
-    usleep(fake_sleep_time_us);
+    spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
@@ -130,7 +141,7 @@ static int delete_obj(char * dirname, char * filename){
     printf("delete obj: %s\n", filename);
   }
   if (rank0 == 1 && fake_sleep_time_us != 0){
-    usleep(fake_sleep_time_us);
+    spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
     return MD_ERROR_UNKNOWN;
