@@ -22,8 +22,10 @@
 
 static int fake_errors = 0;
 static int fake_sleep_time_us = 0;
+static int print_pattern = 0;
 
 static option_help options [] = {
+  {'p', "print-pattern", "Prints the output pattern", OPTION_FLAG, 'd', & print_pattern},
   {'f', "fake-errors", "Fake errors while running benchmark, best to use with --ignore-precreate-errors.", OPTION_FLAG, 'd', & fake_errors},
   {'s', "fake-sleep-us", "Add X us to each write/read/delete operation on process 0.", OPTION_OPTIONAL_ARGUMENT, 'd', & fake_sleep_time_us},
   LAST_OPTION
@@ -73,14 +75,23 @@ static int def_obj_name(char * out_name, int n, int d, int i){
 }
 
 static int create_dset(char * filename){
+  if(print_pattern){
+    printf("create dset: %s\n", filename);
+  }
   return MD_SUCCESS;
 }
 
 static int rm_dset(char * filename){
+  if(print_pattern){
+    printf("rm dset: %s\n", filename);
+  }
   return MD_SUCCESS;
 }
 
 static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
+  if(print_pattern){
+    printf("write obj: %s\n", filename);
+  }
   if (rank0 == 1 && fake_sleep_time_us != 0){
     usleep(fake_sleep_time_us);
   }
@@ -92,6 +103,9 @@ static int write_obj(char * dirname, char * filename, char * buf, size_t file_si
 
 
 static int read_obj(char * dirname, char * filename, char * buf, size_t file_size){
+  if(print_pattern){
+    printf("read obj: %s\n", filename);
+  }
   if (rank0 == 1 && fake_sleep_time_us != 0){
     usleep(fake_sleep_time_us);
   }
@@ -102,6 +116,9 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
 }
 
 static int stat_obj(char * dirname, char * filename, size_t file_size){
+  if(print_pattern){
+    printf("stat obj: %s\n", filename);
+  }
   if(fake_errors){
     return MD_ERROR_FIND;
   }
@@ -109,6 +126,9 @@ static int stat_obj(char * dirname, char * filename, size_t file_size){
 }
 
 static int delete_obj(char * dirname, char * filename){
+  if(print_pattern){
+    printf("delete obj: %s\n", filename);
+  }
   if (rank0 == 1 && fake_sleep_time_us != 0){
     usleep(fake_sleep_time_us);
   }

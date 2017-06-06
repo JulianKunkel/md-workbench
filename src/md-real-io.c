@@ -115,7 +115,7 @@ struct benchmark_options{
 
   int verbosity;
   int process_report;
-  int print_pattern;
+
   int print_detailed_stats;
   int quiet_output;
 
@@ -307,20 +307,6 @@ void run_precreate(phase_stat_t * s){
 }
 
 
-static void print_access_pattern(){
-  if (o.rank == 0){
-     printf("I/O pattern\n");
-     for(int n=0; n < o.size; n++){
-       for(int d=0; d < o.dset_count; d++){
-         int writeRank = (n + o.offset * (d+1)) % o.size;
-         int readRank = (n - o.offset * (d+1)) % o.size;
-         readRank = readRank < 0 ? readRank + o.size : readRank;
-         printf("%d: write: %d read: %d\n", n, writeRank, readRank);
-       }
-    }
-  }
-}
-
 
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
 void run_benchmark(phase_stat_t * s, int start_index){
@@ -453,7 +439,6 @@ static option_help options [] = {
   {'m', "lim-free-mem", "Allocate memory until this limit (in MiB) is reached.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory},
   {'M', "lim-free-mem-phase", "Allocate memory until this limit (in MiB) is reached between the phases, but free it before starting the next phase; the time is NOT included for the phase.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory_between_phases},
   {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
-  {0, "print-pattern", "Print the pattern, the neighbors used in one iteration.", OPTION_FLAG, 'd', & o.print_pattern},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
   {'R', "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
@@ -536,12 +521,6 @@ int main(int argc, char ** argv){
     }else{
       exit(1);
     }
-  }
-
-  if(o.print_pattern){
-     print_access_pattern();
-     MPI_Finalize();
-     exit(0);
   }
 
   if (!(o.phase_cleanup || o.phase_precreate || o.phase_benchmark)){
