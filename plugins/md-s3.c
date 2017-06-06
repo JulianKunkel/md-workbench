@@ -41,7 +41,7 @@ static option_help options [] = {
   {'b', "bucket-per-set", "Use one bucket to map a set, otherwise only one bucket is used.", OPTION_FLAG, 'd', & bucket_per_set},
   {'B', "bucket-name-prefix", "The name of the bucket (when using without -b), otherwise it is used as prefix.", OPTION_OPTIONAL_ARGUMENT, 's', & bucket_prefix},
   {'p', "dont-suffix-bucket", "If not selected, then a hash will be added to the bucket name to increase uniqueness.", OPTION_FLAG, 'd', & dont_suffix },
-  {'H', "host", "The host.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
+  {'H', "host", "The host optionally followed by:port.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
   {'s', "secret-key", "The secret key.", OPTION_REQUIRED_ARGUMENT, 'H', & secret_key},
   {'a', "access-key", "The access key.", OPTION_REQUIRED_ARGUMENT, 'H', & access_key},
   LAST_OPTION
