@@ -64,6 +64,10 @@ static int current_index(){
   return 0;
 }
 
+static void store_position(int pos){
+  return;
+}
+
 static int prepare_global(){
   if( ! table_per_dset ){
     char obj_name[1024];
