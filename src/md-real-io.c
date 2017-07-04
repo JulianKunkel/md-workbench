@@ -86,9 +86,14 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   op_stat_t obj_read;
   op_stat_t obj_stat;
   op_stat_t obj_delete;
-} phase_stat_t;
 
-#define init_stats(p) memset(& p, 0, sizeof(p));
+  // time measurements individual runs
+  size_t repeats;
+  float * time_create;
+  float * time_read;
+  float * time_stat;
+  float * time_delete;
+} phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
 #define LLU (long long unsigned)
@@ -105,6 +110,8 @@ struct benchmark_options{
   int offset;
   int iterations;
   int file_size;
+
+  int measure_latency;
 
   int phase_cleanup;
   int phase_precreate;
@@ -135,6 +142,19 @@ void init_options(){
   o.offset = 1;
   o.iterations = 3;
   o.file_size = 3900;
+}
+
+
+static void init_stats(phase_stat_t * p, int repeats){
+  memset(p, 0, sizeof(phase_stat_t));
+  p->repeats = repeats;
+  if (o.measure_latency && repeats > 0){
+      size_t timer_size = repeats * sizeof(float);
+      p->time_create = malloc(timer_size);
+      p->time_read = malloc(timer_size);
+      p->time_stat = malloc(timer_size);
+      p->time_delete = malloc(timer_size);
+  }
 }
 
 static void print_detailed_stat_header(){
@@ -196,6 +216,26 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
   }
 }
 
+//static int compare_floats(float * x, float * y){
+//  return *x<*y ? -1 : (*x>*y ? +1 : 0);
+//}
+
+static void store_histogram(char * const name, float * times, size_t repeats){
+  if(o.rank == 0){
+    //qsort(times, repeats, sizeof(float), (int (*)(const void *, const void *)) compare_floats);
+    //float mn = times[0];
+    //float mx = times[repeats - 1];
+    //int buckets = 20;
+    char file[1024];
+    sprintf(file, "%s-%d.csv", name, o.rank);
+    FILE * f = fopen(file, "w+");
+    for(size_t i = 0; i < repeats; i++){
+      fprintf(f, "%.4e\n", times[i]);
+    }
+    fclose(f);
+  }
+}
+
 static void end_phase(const char * name, phase_stat_t * p, timer start){
   int ret;
   char buff[4096];
@@ -207,7 +247,7 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
 
   // prepare the summarized report
   phase_stat_t g_stat;
-  init_stats(g_stat);
+  init_stats(& g_stat, 0);
   // reduce timers
   ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
@@ -232,6 +272,20 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
       print_p_stat(buff, name, p, p->t);
       MPI_Send(buff, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
     }
+  }
+
+  if(p->time_create != NULL){
+    store_histogram("create", p->time_create, p->repeats);
+    store_histogram("read", p->time_read, p->repeats);
+    store_histogram("stat", p->time_stat, p->repeats);
+    store_histogram("delete", p->time_delete, p->repeats);
+  }
+
+  if (p->time_create){
+    free(p->time_create);
+    free(p->time_read);
+    free(p->time_stat);
+    free(p->time_delete);
   }
 
   // allocate if necessary
@@ -315,9 +369,12 @@ void run_benchmark(phase_stat_t * s, int start_index){
   int ret;
   char * buf = malloc(o.file_size);
   memset(buf, o.rank % 256, o.file_size);
+  timer op_timer; // timer for individual operations
+  size_t pos = -1; // position inside the individual measurement array
 
   for(int f=0; f < o.num; f++){
     for(int d=0; d < o.dset_count; d++){
+      pos++;
       int writeRank = (o.rank + o.offset * (d+1)) % o.size;
       const int prevFile = f + start_index;
       ret = o.plugin->def_obj_name(obj_name, writeRank, d, o.precreate + prevFile);
@@ -330,7 +387,14 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2)
         printf("%d write %s:%s \n", o.rank, dset, obj_name);
 
+      if(o.measure_latency){
+        start_timer(& op_timer);
+      }
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
+      if(o.measure_latency){
+        double op_time = stop_timer(op_timer);
+        s->time_create[pos] = (float) op_time;
+      }
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
       }else if (ret == MD_ERROR_CREATE){
@@ -357,7 +421,15 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: stat %s:%s \n", o.rank, dset, obj_name);
       }
+
+      if(o.measure_latency){
+        start_timer(& op_timer);
+      }
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
+      if(o.measure_latency){
+        double op_time = stop_timer(op_timer);
+        s->time_stat[pos] = (float) op_time;
+      }
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
           printf("%d: Error while stating the obj: %s\n", o.rank, dset);
@@ -369,7 +441,14 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: read %s:%s \n", o.rank, dset, obj_name);
       }
+      if(o.measure_latency){
+        start_timer(& op_timer);
+      }
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
+      if(o.measure_latency){
+        double op_time = stop_timer(op_timer);
+        s->time_read[pos] = (float) op_time;
+      }
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
       }else if (ret == MD_NOOP){
@@ -385,7 +464,14 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
       }
+      if(o.measure_latency){
+        start_timer(& op_timer);
+      }
       o.plugin->delete_obj(dset, obj_name);
+      if(o.measure_latency){
+        double op_time = stop_timer(op_timer);
+        s->time_delete[pos] = (float) op_time;
+      }
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
       }else if (ret == MD_NOOP){
@@ -433,6 +519,7 @@ static option_help options [] = {
   {'O', "offset", "Offset in o.ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.offset},
   {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & o.interface},
   {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
+  {'L', "latency", "Measure the latency for individual operations.", OPTION_FLAG, 'd', & o.measure_latency},
   {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
   {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
   {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
@@ -581,7 +668,7 @@ int main(int argc, char ** argv){
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
     }
-    init_stats(phase_stats);
+    init_stats(& phase_stats, 0);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // pre-creation phase
@@ -593,7 +680,7 @@ int main(int argc, char ** argv){
   if (o.phase_benchmark){
     // benchmark phase
     for(int i=0; i < o.iterations; i++){
-      init_stats(phase_stats);
+      init_stats(& phase_stats, o.num * o.dset_count);
       start_timer(& tmp);
       run_benchmark(& phase_stats, current_index);
       current_index += o.num;
@@ -603,7 +690,7 @@ int main(int argc, char ** argv){
 
   // cleanup phase
   if (o.phase_cleanup){
-    init_stats(phase_stats);
+    init_stats(& phase_stats, 0);
     start_timer(& tmp);
     run_cleanup(& phase_stats, current_index);
     end_phase("cleanup", & phase_stats, tmp);
