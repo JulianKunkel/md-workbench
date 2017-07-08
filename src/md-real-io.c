@@ -708,6 +708,7 @@ int main(int argc, char ** argv){
     MPI_Barrier(MPI_COMM_WORLD);
 
     // pre-creation phase
+    start_timer(& global_timer);
     start_timer(& tmp);
     run_precreate(& phase_stats);
     end_phase("precreate", & phase_stats, tmp);
@@ -728,6 +729,7 @@ int main(int argc, char ** argv){
   // cleanup phase
   if (o.phase_cleanup){
     init_stats(& phase_stats, o.precreate * o.dset_count);
+    start_timer(& global_timer);
     start_timer(& tmp);
     run_cleanup(& phase_stats, current_index);
     end_phase("cleanup", & phase_stats, tmp);
