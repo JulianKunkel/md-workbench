@@ -138,6 +138,7 @@ struct benchmark_options{
 };
 
 static timer global_timer;
+static int global_iteration = 0;
 
 struct benchmark_options o;
 
@@ -244,7 +245,7 @@ static void store_histogram(char * const name, time_result_t * times, size_t rep
     //float mx = times[repeats - 1];
     //int buckets = 20;
     char file[1024];
-    sprintf(file, "%s-%s-%d.csv", o.latency_file_prefix, name, o.rank);
+    sprintf(file, "%s-%d-%s-%d.csv", o.latency_file_prefix, global_iteration, name, o.rank);
     FILE * f = fopen(file, "w+");
     fprintf(f, "time,runtime\n");
     for(size_t i = 0; i < repeats; i++){
@@ -716,7 +717,7 @@ int main(int argc, char ** argv){
 
   if (o.phase_benchmark){
     // benchmark phase
-    for(int i=0; i < o.iterations; i++){
+    for(global_iteration = 0; global_iteration < o.iterations; global_iteration++){
       init_stats(& phase_stats, o.num * o.dset_count);
       start_timer(& global_timer);
       start_timer(& tmp);
