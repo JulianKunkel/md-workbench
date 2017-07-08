@@ -165,6 +165,12 @@ static void init_stats(phase_stat_t * p, int repeats){
   }
 }
 
+static void add_timed_result(timer start, time_result_t * results, size_t pos){
+  double op_time = stop_timer(start);
+  results[pos].runtime = (float) op_time;
+  results[pos].time_since_app_start = timer_subtract(start, global_timer);
+}
+
 static void print_detailed_stat_header(){
     printf("phase\t\td name\tcreate\tdelete\tob nam\tcreate\tread\tstat\tdelete\tt_inc_b\tt_no_bar\tthp\n");
 }
@@ -287,10 +293,16 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
   }
 
   if(p->time_create != NULL){
-    store_histogram("create", p->time_create, p->repeats);
-    store_histogram("read", p->time_read, p->repeats);
-    store_histogram("stat", p->time_stat, p->repeats);
-    store_histogram("delete", p->time_delete, p->repeats);
+    if(strcmp(name,"precreate") == 0){
+      store_histogram("precreate", p->time_create, p->repeats);
+    }else if(strcmp(name,"cleanup") == 0){
+      store_histogram("cleanup", p->time_delete, p->repeats);
+    }else if(strcmp(name,"benchmark") == 0){
+      store_histogram("create", p->time_create, p->repeats);
+      store_histogram("read", p->time_read, p->repeats);
+      store_histogram("stat", p->time_stat, p->repeats);
+      store_histogram("delete", p->time_delete, p->repeats);
+    }
   }
 
   if (p->time_create){
@@ -340,11 +352,14 @@ void run_precreate(phase_stat_t * s){
 
   char * buf = malloc(o.file_size);
   memset(buf, o.rank % 256, o.file_size);
+  timer op_timer; // timer for individual operations
+  size_t pos = -1; // position inside the individual measurement array
 
   // create the obj
   for(int d=0; d < o.dset_count; d++){
     ret = o.plugin->def_dset_name(dset, o.rank, d);
     for(int f=0; f < o.precreate; f++){
+      pos++;
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f);
       if (ret != MD_SUCCESS){
         s->dset_name.err++;
@@ -355,7 +370,13 @@ void run_precreate(phase_stat_t * s){
         s->obj_name.err++;
         continue;
       }
+      if(o.latency_file_prefix){
+        start_timer(& op_timer);
+      }
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
+      if(o.latency_file_prefix){
+        add_timed_result(op_timer, s->time_create, pos);
+      }
       if (ret == MD_NOOP){
         // do not increment any counter
       }else if (ret == MD_SUCCESS){
@@ -371,13 +392,6 @@ void run_precreate(phase_stat_t * s){
   }
   free(buf);
 }
-
-static void add_timed_result(timer start, time_result_t * results, size_t pos){
-  double op_time = stop_timer(start);
-  results[pos].runtime = (float) op_time;
-  results[pos].time_since_app_start = timer_subtract(start, global_timer);
-}
-
 
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
 void run_benchmark(phase_stat_t * s, int start_index){
@@ -502,13 +516,22 @@ void run_cleanup(phase_stat_t * s, int start_index){
   char dset[4096];
   char obj_name[4096];
   int ret;
+  timer op_timer; // timer for individual operations
+  size_t pos = -1; // position inside the individual measurement array
 
   for(int d=0; d < o.dset_count; d++){
     ret = o.plugin->def_dset_name(dset, o.rank, d);
 
     for(int f=0; f < o.precreate; f++){
+      pos++;
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + start_index);
+      if(o.latency_file_prefix){
+        start_timer(& op_timer);
+      }
       ret = o.plugin->delete_obj(dset, obj_name);
+      if(o.latency_file_prefix){
+        add_timed_result(op_timer, s->time_delete, pos);
+      }
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_SUCCESS){
@@ -681,7 +704,7 @@ int main(int argc, char ** argv){
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
     }
-    init_stats(& phase_stats, 0);
+    init_stats(& phase_stats, o.precreate * o.dset_count);
     MPI_Barrier(MPI_COMM_WORLD);
 
     // pre-creation phase
@@ -704,7 +727,7 @@ int main(int argc, char ** argv){
 
   // cleanup phase
   if (o.phase_cleanup){
-    init_stats(& phase_stats, 0);
+    init_stats(& phase_stats, o.precreate * o.dset_count);
     start_timer(& tmp);
     run_cleanup(& phase_stats, current_index);
     end_phase("cleanup", & phase_stats, tmp);
