@@ -72,6 +72,12 @@ typedef struct {
   int err;
 } op_stat_t;
 
+// A runtime for an operation and when the operation was started
+typedef struct{
+  float time_since_app_start;
+  float runtime;
+} time_result_t;
+
 // statistics for running a single phase
 typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   double t;
@@ -89,10 +95,10 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
 
   // time measurements individual runs
   size_t repeats;
-  float * time_create;
-  float * time_read;
-  float * time_stat;
-  float * time_delete;
+  time_result_t * time_create;
+  time_result_t * time_read;
+  time_result_t * time_stat;
+  time_result_t * time_delete;
 } phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
@@ -131,6 +137,8 @@ struct benchmark_options{
   int size;
 };
 
+static timer global_timer;
+
 struct benchmark_options o;
 
 void init_options(){
@@ -149,7 +157,7 @@ static void init_stats(phase_stat_t * p, int repeats){
   memset(p, 0, sizeof(phase_stat_t));
   p->repeats = repeats;
   if (o.measure_latency && repeats > 0){
-      size_t timer_size = repeats * sizeof(float);
+      size_t timer_size = repeats * sizeof(time_result_t);
       p->time_create = malloc(timer_size);
       p->time_read = malloc(timer_size);
       p->time_stat = malloc(timer_size);
@@ -223,7 +231,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
 //  return *x<*y ? -1 : (*x>*y ? +1 : 0);
 //}
 
-static void store_histogram(char * const name, float * times, size_t repeats){
+static void store_histogram(char * const name, time_result_t * times, size_t repeats){
   if(o.rank == 0){
     //qsort(times, repeats, sizeof(float), (int (*)(const void *, const void *)) compare_floats);
     //float mn = times[0];
@@ -232,8 +240,9 @@ static void store_histogram(char * const name, float * times, size_t repeats){
     char file[1024];
     sprintf(file, "%s-%d.csv", name, o.rank);
     FILE * f = fopen(file, "w+");
+    fprintf(f, "time,runtime\n");
     for(size_t i = 0; i < repeats; i++){
-      fprintf(f, "%.4e\n", times[i]);
+      fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
     }
     fclose(f);
   }
@@ -363,6 +372,11 @@ void run_precreate(phase_stat_t * s){
   free(buf);
 }
 
+static void add_timed_result(timer start, time_result_t * results, size_t pos){
+  double op_time = stop_timer(start);
+  results[pos].runtime = (float) op_time;
+  results[pos].time_since_app_start = timer_subtract(start, global_timer);
+}
 
 
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
@@ -395,8 +409,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       if(o.measure_latency){
-        double op_time = stop_timer(op_timer);
-        s->time_create[pos] = (float) op_time;
+        add_timed_result(op_timer, s->time_create, pos);
       }
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
@@ -430,8 +443,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
       if(o.measure_latency){
-        double op_time = stop_timer(op_timer);
-        s->time_stat[pos] = (float) op_time;
+        add_timed_result(op_timer, s->time_stat, pos);
       }
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
@@ -449,8 +461,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
       if(o.measure_latency){
-        double op_time = stop_timer(op_timer);
-        s->time_read[pos] = (float) op_time;
+        add_timed_result(op_timer, s->time_read, pos);
       }
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
@@ -472,8 +483,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }
       o.plugin->delete_obj(dset, obj_name);
       if(o.measure_latency){
-        double op_time = stop_timer(op_timer);
-        s->time_delete[pos] = (float) op_time;
+        add_timed_result(op_timer, s->time_delete, pos);
       }
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
@@ -684,6 +694,7 @@ int main(int argc, char ** argv){
     // benchmark phase
     for(int i=0; i < o.iterations; i++){
       init_stats(& phase_stats, o.num * o.dset_count);
+      start_timer(& global_timer);
       start_timer(& tmp);
       run_benchmark(& phase_stats, current_index);
       current_index += o.num;

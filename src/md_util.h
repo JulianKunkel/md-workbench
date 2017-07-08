@@ -30,6 +30,8 @@ typedef struct timespec timer;
 
 void start_timer(timer * t1);
 double stop_timer(timer t1);
+double timer_subtract(timer number, timer subtract);
+
 
 // allow to allocate memory
 int mem_preallocate(char ** allocP, uint64_t maxRAMinMB, int verbose);

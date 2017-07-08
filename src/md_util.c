@@ -37,6 +37,11 @@ double stop_timer(timer t1) {
     return (end - t1) / 1000.0 / 1000.0;
 }
 
+
+double timer_subtract(timer number, timer subtract){
+  return (number - subtract) / 1000.0 / 1000.0;
+}
+
 #else // POSIX COMPLAINT
 
 void start_timer(timer * t1) {
@@ -60,6 +65,10 @@ static double time_to_double (struct timespec t) {
     d /= 1000000000.0;
     d += (double)t.tv_sec;
     return d;
+}
+
+double timer_subtract(timer number, timer subtract){
+  return time_to_double(time_diff(number, subtract));
 }
 
 double stop_timer(timer t1) {
