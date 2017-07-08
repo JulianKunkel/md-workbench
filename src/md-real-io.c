@@ -181,13 +181,15 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     // single line
     switch(name[0]){
       case('b'):
-        pos = sprintf(buff, "%s %.1fs %d obj %.1f obj/s %.1f Mib/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %.1f obj/s %.1f Mib/s", name, t,
+          p->obj_create.suc * 4 / t, // write, stat, read, delete
           p->obj_create.suc,
           p->obj_create.suc / t,
           tp);
         break;
       case('p'):
-        pos = sprintf(buff, "%s %.1fs %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, t,
+          (p->dset_create.suc + p->obj_create.suc) / t,
           p->dset_create.suc,
           p->obj_create.suc,
           p->dset_create.suc / t,
@@ -195,7 +197,8 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           tp);
         break;
       case('c'):
-        pos = sprintf(buff, "%s %.1fs %d obj %d dset %.1f obj/s %.3f dset/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s", name, t,
+          (p->obj_delete.suc + p->dset_delete.suc) / t,
           p->obj_delete.suc,
           p->dset_delete.suc,
           p->obj_delete.suc / t,
