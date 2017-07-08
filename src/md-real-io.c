@@ -118,6 +118,7 @@ struct benchmark_options{
   int file_size;
 
   char * latency_file_prefix;
+  int latency_keep_all;
 
   int phase_cleanup;
   int phase_precreate;
@@ -239,7 +240,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
 //}
 
 static void store_histogram(char * const name, time_result_t * times, size_t repeats){
-  if(o.rank == 0){
+  if(o.rank == 0 || o.latency_keep_all){
     //qsort(times, repeats, sizeof(float), (int (*)(const void *, const void *)) compare_floats);
     //float mn = times[0];
     //float mx = times[repeats - 1];
@@ -557,6 +558,7 @@ static option_help options [] = {
   {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & o.interface},
   {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
   {'L', "latency", "Measure the latency for individual operations, prefix the result files with the provided filename.", OPTION_OPTIONAL_ARGUMENT, 's', & o.latency_file_prefix},
+  {0, "latency-all", "Keep the latency files from all ranks.", OPTION_FLAG, 'd', & o.latency_keep_all},
   {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
   {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
   {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
