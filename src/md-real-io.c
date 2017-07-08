@@ -117,7 +117,7 @@ struct benchmark_options{
   int iterations;
   int file_size;
 
-  int measure_latency;
+  char * latency_file_prefix;
 
   int phase_cleanup;
   int phase_precreate;
@@ -156,7 +156,7 @@ void init_options(){
 static void init_stats(phase_stat_t * p, int repeats){
   memset(p, 0, sizeof(phase_stat_t));
   p->repeats = repeats;
-  if (o.measure_latency && repeats > 0){
+  if (o.latency_file_prefix && repeats > 0){
       size_t timer_size = repeats * sizeof(time_result_t);
       p->time_create = malloc(timer_size);
       p->time_read = malloc(timer_size);
@@ -238,7 +238,7 @@ static void store_histogram(char * const name, time_result_t * times, size_t rep
     //float mx = times[repeats - 1];
     //int buckets = 20;
     char file[1024];
-    sprintf(file, "%s-%d.csv", name, o.rank);
+    sprintf(file, "%s-%s-%d.csv", o.latency_file_prefix, name, o.rank);
     FILE * f = fopen(file, "w+");
     fprintf(f, "time,runtime\n");
     for(size_t i = 0; i < repeats; i++){
@@ -404,11 +404,11 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2)
         printf("%d write %s:%s \n", o.rank, dset, obj_name);
 
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         start_timer(& op_timer);
       }
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         add_timed_result(op_timer, s->time_create, pos);
       }
       if (ret == MD_SUCCESS){
@@ -438,11 +438,11 @@ void run_benchmark(phase_stat_t * s, int start_index){
         printf("%d: stat %s:%s \n", o.rank, dset, obj_name);
       }
 
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         start_timer(& op_timer);
       }
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         add_timed_result(op_timer, s->time_stat, pos);
       }
       if(ret != MD_SUCCESS && ret != MD_NOOP){
@@ -456,11 +456,11 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: read %s:%s \n", o.rank, dset, obj_name);
       }
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         start_timer(& op_timer);
       }
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         add_timed_result(op_timer, s->time_read, pos);
       }
       if (ret == MD_SUCCESS){
@@ -478,11 +478,11 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
       }
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         start_timer(& op_timer);
       }
       o.plugin->delete_obj(dset, obj_name);
-      if(o.measure_latency){
+      if(o.latency_file_prefix){
         add_timed_result(op_timer, s->time_delete, pos);
       }
       if (ret == MD_SUCCESS){
@@ -532,7 +532,7 @@ static option_help options [] = {
   {'O', "offset", "Offset in o.ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.offset},
   {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & o.interface},
   {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
-  {'L', "latency", "Measure the latency for individual operations.", OPTION_FLAG, 'd', & o.measure_latency},
+  {'L', "latency", "Measure the latency for individual operations, prefix the result files with the provided filename.", OPTION_OPTIONAL_ARGUMENT, 's', & o.latency_file_prefix},
   {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
   {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
   {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
