@@ -5,7 +5,17 @@ library(ggplot2)
 options(echo=FALSE)
 args = commandArgs(trailingOnly = TRUE)
 input = args[1]
-process = 1
+if (length(args) > 2){
+  process = as.integer(args[2])
+}else{
+  process = 0
+}
+if (length(args) > 3){
+  xlimTimeline = theme(legend.position="bottom") + xlim(0, as.integer(args[3]))
+}else{
+  xlimTimeline = theme(legend.position="bottom")
+}
+
 
 # now we have to read three files
 d1 = read.csv(sprintf("%s-create-%d.csv", input, process))
@@ -33,7 +43,7 @@ print(summary(d4$runtime))
 
 d = rbind(d1, d2, d3, d4)
 
-p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + scale_y_log10() +   theme(legend.position="bottom")
+p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + scale_y_log10() + xlimTimeline
 ggsave(sprintf("%s-timeline-%d.pdf", input, process), plot=p, width=8, height=5)
 
 p = ggplot(d, aes(x=runtime,col=type)) + geom_density(alpha=.2)  + scale_x_log10() +   theme(legend.position="bottom") # +  geom_histogram(aes(y=..density..), binwidth=.5, colour="black", fill="white")
