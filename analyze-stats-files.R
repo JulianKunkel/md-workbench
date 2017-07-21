@@ -11,7 +11,7 @@ if (length(args) > 1){
   process = 0
 }
 if (length(args) > 2){
-  xlimTimeline = theme(legend.position="bottom") + xlim(0, as.integer(args[3]))
+  xlimTimeline = xlim(0, as.integer(args[3]))
 }else{
   xlimTimeline = theme(legend.position="bottom")
 }
@@ -43,7 +43,7 @@ print(summary(d4$runtime))
 
 d = rbind(d1, d2, d3, d4)
 
-p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + scale_y_log10() + xlimTimeline
+p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + scale_y_log10() + theme(legend.position="bottom") + xlimTimeline
 ggsave(sprintf("%s-timeline-%d.pdf", input, process), plot=p, width=8, height=5)
 
 p = ggplot(d, aes(x=runtime,col=type)) + geom_density(alpha=.2)  + scale_x_log10() +   theme(legend.position="bottom") # +  geom_histogram(aes(y=..density..), binwidth=.5, colour="black", fill="white")
