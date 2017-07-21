@@ -5,12 +5,12 @@ library(ggplot2)
 options(echo=FALSE)
 args = commandArgs(trailingOnly = TRUE)
 input = args[1]
-if (length(args) > 2){
+if (length(args) > 1){
   process = as.integer(args[2])
 }else{
   process = 0
 }
-if (length(args) > 3){
+if (length(args) > 2){
   xlimTimeline = theme(legend.position="bottom") + xlim(0, as.integer(args[3]))
 }else{
   xlimTimeline = theme(legend.position="bottom")
