@@ -33,9 +33,6 @@ struct md_plugin{
   // rank0 calls these methods to create / purge the initial setup:
   int (*prepare_global)();
   int (*purge_global)();
-  // the position of the object index, if run multiple times
-  int (*return_position)();
-  void (*store_position)(int position);
 
   // each process may need to create / delete a set of dat sets
   int (*def_dset_name)(char * out_name, int n, int d);

@@ -76,14 +76,6 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
-static int current_index(){
-  return 0;
-}
-
-static void store_position(int pos){
-  return;
-}
-
 static int prepare_global(){
   if (show_hint_list){
     MPI_Info einfo;
@@ -231,8 +223,6 @@ struct md_plugin md_plugin_mpi = {
   finalize,
   prepare_global,
   purge_global,
-  current_index,
-  store_position,
 
   def_dset_name,
   create_dset,

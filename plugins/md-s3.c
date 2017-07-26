@@ -90,13 +90,6 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
-static int current_index(){
-  return 0;
-}
-static void store_position(int pos){
-  return;
-}
-
 static int def_dset_name(char * out_name, int n, int d){
   // S3_MAX_BUCKET_NAME_SIZE
   if (bucket_per_set){
@@ -286,8 +279,6 @@ struct md_plugin md_plugin_s3 = {
   finalize,
   prepare_global,
   purge_global,
-  current_index,
-  store_position,
 
   def_dset_name,
   create_dset,

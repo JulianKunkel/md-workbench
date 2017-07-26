@@ -60,14 +60,6 @@ static option_help * get_options(){
   return options;
 }
 
-static int current_index(){
-  return 0;
-}
-
-static void store_position(int pos){
-  return;
-}
-
 static int prepare_global(){
   if( ! table_per_dset ){
     char obj_name[1024];
@@ -296,8 +288,6 @@ struct md_plugin md_plugin_postgres = {
   finalize,
   prepare_global,
   purge_global,
-  current_index,
-  store_position,
 
   def_dset_name,
   create_dset,

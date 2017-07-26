@@ -46,35 +46,6 @@ static int finalize(){
   return MD_SUCCESS;
 }
 
-static int current_index(){
-  char name[4096];
-  sprintf(name, "%s/index", dir);
-  int fd = open(name, O_RDONLY);
-  if (fd < 0){
-    return 0;
-  }
-  int pos;
-  int ret = read(fd, & pos, sizeof(int));
-  close(fd);
-  if (ret != sizeof(int) || pos < 0){
-    printf("WARN: Stored position < 0\n");
-    return 0;
-  }
-
-  return pos;
-}
-
-static void store_position(int pos){
-  char name[4096];
-  sprintf(name, "%s/index", dir);
-  int fd = open(name, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-  int ret = write(fd, & pos, sizeof(int));
-  close(fd);
-  if (ret != sizeof(int)){
-    printf("WARN: could not update index\n");
-  }
-}
-
 static int prepare_global(){
   int ret = mkdir(dir, 0755);
   if(ret != 0){
@@ -180,8 +151,6 @@ struct md_plugin md_plugin_posix = {
   finalize,
   prepare_global,
   purge_global,
-  current_index,
-  store_position,
 
   def_dset_name,
   create_dset,

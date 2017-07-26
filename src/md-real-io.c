@@ -136,6 +136,8 @@ struct benchmark_options{
   int print_detailed_stats;
   int quiet_output;
 
+  char * run_info_file;
+
   int ignore_precreate_errors;
   int rank;
   int size;
@@ -155,6 +157,7 @@ void init_options(){
   o.offset = 1;
   o.iterations = 3;
   o.file_size = 3900;
+  o.run_info_file = "mdtest.status";
 }
 
 
@@ -586,6 +589,7 @@ static option_help options [] = {
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
   {0, "process-reports", "Independent report per process/rank", OPTION_FLAG, 'd', & o.process_report},
   {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & o.verbosity},
+  {0, "run-info-file", "The log file for resuming a previous run", OPTION_OPTIONAL_ARGUMENT, 's', & o.run_info_file},
   LAST_OPTION
   };
 
@@ -627,6 +631,32 @@ static void printTime(){
     time_t now = time(0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S", localtime (&now));
     printf("%s\n", buff);
+}
+
+static int return_position(){
+  int position, ret;
+  FILE * f = fopen(o.run_info_file, "r");
+  if(! f){
+    printf("[ERROR] Could not open %s for restart\n", o.run_info_file);
+    exit(1);
+  }
+  ret = fscanf(f, "pos: %d", & position);
+  if (ret != 1){
+    printf("Could not read from %s for restart\n", o.run_info_file);
+    exit(1);
+  }
+  fclose(f);
+  return position;
+}
+
+static void store_position(int position){
+  FILE * f = fopen(o.run_info_file, "w");
+  if(! f){
+    printf("[ERROR] Could not open %s for saving data\n", o.run_info_file);
+    exit(1);
+  }
+  fprintf(f, "pos: %d\n", position);
+  fclose(f);
 }
 
 int main(int argc, char ** argv){
@@ -675,7 +705,7 @@ int main(int argc, char ** argv){
 
   int current_index = 0;
   if ( (o.phase_cleanup || o.phase_benchmark) && ! o.phase_precreate ){
-    current_index = o.plugin->return_position();
+    current_index = return_position();
   }
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
@@ -757,7 +787,7 @@ int main(int argc, char ** argv){
       }
     }
   }else{
-    o.plugin->store_position(current_index);
+    store_position(current_index);
   }
 
   double t_all = stop_timer(bench_start);

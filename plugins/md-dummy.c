@@ -52,14 +52,6 @@ static int initialize(){
   return MD_SUCCESS;
 }
 
-static int current_index(){
-  return 0;
-}
-
-static void store_position(int pos){
-  return;
-}
-
 static int finalize(){
   return MD_SUCCESS;
 }
@@ -159,8 +151,6 @@ struct md_plugin md_plugin_dummy = {
   finalize,
   prepare_global,
   purge_global,
-  current_index,
-  store_position,
 
   def_dset_name,
   create_dset,
