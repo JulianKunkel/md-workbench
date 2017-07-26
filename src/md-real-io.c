@@ -160,10 +160,10 @@ static void init_stats(phase_stat_t * p, int repeats){
   p->repeats = repeats;
   if (o.latency_file_prefix && repeats > 0){
       size_t timer_size = repeats * sizeof(time_result_t);
-      p->time_create = malloc(timer_size);
-      p->time_read = malloc(timer_size);
-      p->time_stat = malloc(timer_size);
-      p->time_delete = malloc(timer_size);
+      p->time_create = (time_result_t *)  malloc(timer_size);
+      p->time_read = (time_result_t *) malloc(timer_size);
+      p->time_stat = (time_result_t *) malloc(timer_size);
+      p->time_delete = (time_result_t *) malloc(timer_size);
   }
 }
 
@@ -239,7 +239,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
 //  return *x<*y ? -1 : (*x>*y ? +1 : 0);
 //}
 
-static void store_histogram(char * const name, time_result_t * times, size_t repeats){
+static void store_histogram(const char * name, time_result_t * times, size_t repeats){
   if(o.rank == 0 || o.latency_keep_all){
     //qsort(times, repeats, sizeof(float), (int (*)(const void *, const void *)) compare_floats);
     //float mn = times[0];
