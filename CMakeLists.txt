@@ -31,12 +31,12 @@ pkg_check_modules(MONGOC QUIET libmongoc-1.0)
 find_package_handle_standard_args(MONGOC  DEFAULT_MSG  MONGOC_LIBRARIES  MONGOC_INCLUDE_DIRS)
 
 if(NOT LIBPQ_VERSION)
-  pkg_search_module(LIBPQ libpq)
+  pkg_search_module(LIBPQ libpq>=9.5)
 endif()
 pkg_check_modules(LIBPQ QUIET pq)
 find_package_handle_standard_args(LIBPQ  DEFAULT_MSG  LIBPQ_LIBRARIES  LIBPQ_INCLUDE_DIRS)
 
-pkg_search_module(LIBS3 libs3)
+pkg_search_module(LIBS3 libs3>=2.0)
 pkg_check_modules(LIBS3 QUIET s3)
 
 if(NOT LIBS3_VERSION)
