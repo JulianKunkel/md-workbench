@@ -99,6 +99,9 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   time_result_t * time_read;
   time_result_t * time_stat;
   time_result_t * time_delete;
+
+  // the maximum time for any single operation
+  double max_op_time;
 } phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
@@ -167,10 +170,15 @@ static void init_stats(phase_stat_t * p, int repeats){
   }
 }
 
-static void add_timed_result(timer start, time_result_t * results, size_t pos){
+static void add_timed_result(timer start, time_result_t * results, size_t pos, double * max_time){
   double op_time = stop_timer(start);
-  results[pos].runtime = (float) op_time;
-  results[pos].time_since_app_start = timer_subtract(start, global_timer);
+  if (o.latency_file_prefix){
+    results[pos].runtime = (float) op_time;
+    results[pos].time_since_app_start = timer_subtract(start, global_timer);
+  }
+  if (op_time > *max_time){
+    *max_time = op_time;
+  }
 }
 
 static void print_detailed_stat_header(){
@@ -197,28 +205,31 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     // single line
     switch(name[0]){
       case('b'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %.1f obj/s %.1f Mib/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %.1f obj/s %.1f Mib/s max %.4es", name, t,
           p->obj_create.suc * 4 / t, // write, stat, read, delete
           p->obj_create.suc,
           p->obj_create.suc / t,
-          tp);
+          tp,
+          p->max_op_time);
         break;
       case('p'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s max %.4es", name, t,
           (p->dset_create.suc + p->obj_create.suc) / t,
           p->dset_create.suc,
           p->obj_create.suc,
           p->dset_create.suc / t,
           p->obj_create.suc / t,
-          tp);
+          tp,
+          p->max_op_time);
         break;
       case('c'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s", name, t,
+        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s max %.4es", name, t,
           (p->obj_delete.suc + p->dset_delete.suc) / t,
           p->obj_delete.suc,
           p->dset_delete.suc,
           p->obj_delete.suc / t,
-          p->dset_delete.suc / t);
+          p->dset_delete.suc / t,
+          p->max_op_time);
         break;
       default:
         pos = sprintf(buff, "%s: unknown phase", name);
@@ -272,6 +283,8 @@ static void end_phase(const char * name, phase_stat_t * p, timer start){
   ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
   ret = MPI_Reduce(& p->dset_name, & g_stat.dset_name, 2*(3+5), MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+  CHECK_MPI_RET(ret)
+  ret = MPI_Reduce(& p->max_op_time, & g_stat.max_op_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
 
   if (o.rank == 0){
@@ -372,13 +385,13 @@ void run_precreate(phase_stat_t * s){
         s->obj_name.err++;
         continue;
       }
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_create, pos);
-      }
+
+      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
+
       if (ret == MD_NOOP){
         // do not increment any counter
       }else if (ret == MD_SUCCESS){
@@ -420,13 +433,13 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2)
         printf("%d write %s:%s \n", o.rank, dset, obj_name);
 
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_create, pos);
-      }
+
+      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
+
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
       }else if (ret == MD_ERROR_CREATE){
@@ -454,13 +467,13 @@ void run_benchmark(phase_stat_t * s, int start_index){
         printf("%d: stat %s:%s \n", o.rank, dset, obj_name);
       }
 
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_stat, pos);
-      }
+
+      add_timed_result(op_timer, s->time_stat, pos, & s->max_op_time);
+
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
           printf("%d: Error while stating the obj: %s\n", o.rank, dset);
@@ -472,13 +485,13 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: read %s:%s \n", o.rank, dset, obj_name);
       }
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_read, pos);
-      }
+
+      add_timed_result(op_timer, s->time_read, pos, & s->max_op_time);
+
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
       }else if (ret == MD_NOOP){
@@ -494,13 +507,13 @@ void run_benchmark(phase_stat_t * s, int start_index){
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
       }
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       o.plugin->delete_obj(dset, obj_name);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_delete, pos);
-      }
+
+      add_timed_result(op_timer, s->time_delete, pos, & s->max_op_time);
+
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
       }else if (ret == MD_NOOP){
@@ -527,13 +540,13 @@ void run_cleanup(phase_stat_t * s, int start_index){
     for(int f=0; f < o.precreate; f++){
       pos++;
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + start_index);
-      if(o.latency_file_prefix){
-        start_timer(& op_timer);
-      }
+
+      start_timer(& op_timer);
+
       ret = o.plugin->delete_obj(dset, obj_name);
-      if(o.latency_file_prefix){
-        add_timed_result(op_timer, s->time_delete, pos);
-      }
+
+      add_timed_result(op_timer, s->time_delete, pos, & s->max_op_time);
+
       if (ret == MD_NOOP){
         // nothing to do
       }else if (ret == MD_SUCCESS){
