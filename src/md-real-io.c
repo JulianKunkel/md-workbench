@@ -182,7 +182,7 @@ static void add_timed_result(timer start, time_result_t * results, size_t pos, d
 }
 
 static void print_detailed_stat_header(){
-    printf("phase\t\td name\tcreate\tdelete\tob nam\tcreate\tread\tstat\tdelete\tt_inc_b\tt_no_bar\tthp\n");
+    printf("phase\t\td name\tcreate\tdelete\tob nam\tcreate\tread\tstat\tdelete\tt_inc_b\tt_no_bar\tthp\tmax_t\n");
 }
 
 static int sum_err(phase_stat_t * p){
@@ -195,7 +195,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
   const int errs = sum_err(p);
 
   if (o.print_detailed_stats){
-    sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, t, tp);
+    sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s %.4e", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, t, tp, p->max_op_time);
 
     if (errs > 0){
       sprintf(buff, "%s err\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d", name, p->dset_name.err, p->dset_create.err,  p->dset_delete.err, p->obj_name.err, p->obj_create.err, p->obj_read.err, p->obj_stat.err, p->obj_delete.err);
@@ -584,7 +584,7 @@ static option_help options [] = {
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
-  {0, "process-reports", "Independent report per process", OPTION_FLAG, 'd', & o.process_report},
+  {0, "process-reports", "Independent report per process/rank", OPTION_FLAG, 'd', & o.process_report},
   {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & o.verbosity},
   LAST_OPTION
   };
