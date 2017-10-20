@@ -2,7 +2,12 @@
 
 PARAMETERS="$0 $*"
 CMAKEFLAGS=
-SRCDIR=$(dirname $(readlink -f $0))/
+
+if [ "$(uname -s)" = 'Linux' ]; then
+	SRCDIR=$(dirname $(readlink -f $0))/
+else
+	SRCDIR=$(dirname $(readlink $0))/
+fi
 CURPATH="$PWD"
 
 function help(){
