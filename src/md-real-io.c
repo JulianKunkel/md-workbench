@@ -375,9 +375,9 @@ void run_precreate(phase_stat_t * s){
   size_t pos = -1; // position inside the individual measurement array
 
   // create the obj
-  for(int d=0; d < o.dset_count; d++){
-    ret = o.plugin->def_dset_name(dset, o.rank, d);
-    for(int f=0; f < o.precreate; f++){
+  for(int f=0; f < o.precreate; f++){
+    for(int d=0; d < o.dset_count; d++){
+      ret = o.plugin->def_dset_name(dset, o.rank, d);
       pos++;
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f);
       if (ret != MD_SUCCESS){
