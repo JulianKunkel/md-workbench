@@ -119,6 +119,7 @@ struct benchmark_options{
   int offset;
   int iterations;
   int file_size;
+  int read_only;
 
   char * latency_file_prefix;
   int latency_keep_all;
@@ -424,38 +425,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
   for(int f=0; f < o.num; f++){
     for(int d=0; d < o.dset_count; d++){
       pos++;
-      int writeRank = (o.rank + o.offset * (d+1)) % o.size;
       const int prevFile = f + start_index;
-      ret = o.plugin->def_obj_name(obj_name, writeRank, d, o.precreate + prevFile);
-      if (ret != MD_SUCCESS){
-        s->obj_name.err++;
-        continue;
-      }
-      ret = o.plugin->def_dset_name(dset, writeRank, d);
-
-      if (o.verbosity >= 2)
-        printf("%d write %s:%s \n", o.rank, dset, obj_name);
-
-
-      start_timer(& op_timer);
-
-      ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-
-      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
-
-      if (ret == MD_SUCCESS){
-          s->obj_create.suc++;
-      }else if (ret == MD_ERROR_CREATE){
-        if (o.verbosity)
-          printf("%d: Error while creating the obj: %s\n",o.rank, dset);
-        s->obj_create.err++;
-      }else if (ret == MD_NOOP){
-          // do not increment any counter
-      }else{
-        if (o.verbosity)
-          printf("%d: Error while writing the obj: %s\n",o.rank, dset);
-        s->obj_create.err++;
-      }
 
       int readRank = (o.rank - o.offset * (d+1)) % o.size;
       readRank = readRank < 0 ? readRank + o.size : readRank;
@@ -507,6 +477,10 @@ void run_benchmark(phase_stat_t * s, int start_index){
         s->obj_read.err++;
       }
 
+      if(o.read_only){
+        continue;
+      }
+
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
       }
@@ -524,6 +498,38 @@ void run_benchmark(phase_stat_t * s, int start_index){
       }else{
         printf("%d: Error while deleting the object %s:%s\n", o.rank, dset, obj_name);
         s->obj_delete.err++;
+      }
+
+      int writeRank = (o.rank + o.offset * (d+1)) % o.size;
+      ret = o.plugin->def_obj_name(obj_name, writeRank, d, o.precreate + prevFile);
+      if (ret != MD_SUCCESS){
+        s->obj_name.err++;
+        continue;
+      }
+      ret = o.plugin->def_dset_name(dset, writeRank, d);
+
+      if (o.verbosity >= 2)
+        printf("%d write %s:%s \n", o.rank, dset, obj_name);
+
+
+      start_timer(& op_timer);
+
+      ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
+
+      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
+
+      if (ret == MD_SUCCESS){
+          s->obj_create.suc++;
+      }else if (ret == MD_ERROR_CREATE){
+        if (o.verbosity)
+          printf("%d: Error while creating the obj: %s\n",o.rank, dset);
+        s->obj_create.err++;
+      }else if (ret == MD_NOOP){
+          // do not increment any counter
+      }else{
+        if (o.verbosity)
+          printf("%d: Error while writing the obj: %s\n",o.rank, dset);
+        s->obj_create.err++;
       }
     }
   }
@@ -586,6 +592,7 @@ static option_help options [] = {
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
+  {0, "read-only", "Run read-only during benchmarking phase (no deletes/writes), probably use with -2", OPTION_FLAG, 'd', & o.read_only},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
   {0, "process-reports", "Independent report per process/rank", OPTION_FLAG, 'd', & o.process_report},
   {'v', "verbose", "Increase the verbosity level", OPTION_FLAG, 'd', & o.verbosity},
