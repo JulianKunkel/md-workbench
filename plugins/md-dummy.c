@@ -26,16 +26,15 @@
 static int fake_errors = 0;
 static int fake_sleep_time_us = 0;
 static int print_pattern = 0;
+static FILE * outfile = NULL;
+static int rank = -1;
 
 static option_help options [] = {
-  {'p', "print-pattern", "Prints the output pattern", OPTION_FLAG, 'd', & print_pattern},
+  {'p', "print-pattern", "Prints the output pattern into pattern-<RANK>.txt", OPTION_FLAG, 'd', & print_pattern},
   {'f', "fake-errors", "Fake errors while running benchmark, best to use with --ignore-precreate-errors.", OPTION_FLAG, 'd', & fake_errors},
   {'s', "fake-sleep-us", "Add X us to each write/read/delete operation on process 0.", OPTION_OPTIONAL_ARGUMENT, 'd', & fake_sleep_time_us},
   LAST_OPTION
 };
-
-static int rank0 = 0;
-static int rank = 0;
 
 static option_help * get_options(){
   return options;
@@ -53,16 +52,23 @@ static void spin_sleep(int usec){
 
 static int initialize(){
   MPI_Comm_rank(MPI_COMM_WORLD, & rank);
+  if(print_pattern){
+    char fname[4096];
+    sprintf(fname, "pattern-%d.txt", rank);
+    outfile = fopen(fname, "w");
+  }
   return MD_SUCCESS;
 }
 
 static int finalize(){
+  if(outfile){
+    fclose(outfile);
+  }
   return MD_SUCCESS;
 }
 
 
 static int prepare_global(){
-  rank0 = 1;
   return MD_SUCCESS;
 }
 
@@ -82,24 +88,24 @@ static int def_obj_name(char * out_name, int n, int d, int i){
 }
 
 static int create_dset(char * filename){
-  if(print_pattern){
-    printf("%d create dset: %s\n", rank, filename);
+  if(outfile){
+    fprintf(outfile, "create dset: %s\n", filename);
   }
   return MD_SUCCESS;
 }
 
 static int rm_dset(char * filename){
   if(print_pattern){
-    printf("%d rm dset: %s\n", rank, filename);
+    fprintf(outfile, "rm dset: %s\n", filename);
   }
   return MD_SUCCESS;
 }
 
 static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
   if(print_pattern){
-    printf("%d write obj: %s\n", rank, filename);
+    fprintf(outfile, "write obj: %s\n", filename);
   }
-  if (rank0 == 1 && fake_sleep_time_us != 0){
+  if (rank == 0 && fake_sleep_time_us != 0){
     spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
@@ -111,9 +117,9 @@ static int write_obj(char * dirname, char * filename, char * buf, size_t file_si
 
 static int read_obj(char * dirname, char * filename, char * buf, size_t file_size){
   if(print_pattern){
-    printf("%d read obj: %s\n", rank, filename);
+    fprintf(outfile, "read obj: %s\n", filename);
   }
-  if (rank0 == 1 && fake_sleep_time_us != 0){
+  if (rank == 0 && fake_sleep_time_us != 0){
     spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
@@ -124,7 +130,7 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
 
 static int stat_obj(char * dirname, char * filename, size_t file_size){
   if(print_pattern){
-    printf("%d stat obj: %s\n", rank, filename);
+    fprintf(outfile, "stat obj: %s\n", filename);
   }
   if(fake_errors){
     return MD_ERROR_FIND;
@@ -134,9 +140,9 @@ static int stat_obj(char * dirname, char * filename, size_t file_size){
 
 static int delete_obj(char * dirname, char * filename){
   if(print_pattern){
-    printf("%d delete obj: %s\n", rank, filename);
+    fprintf(outfile, "delete obj: %s\n", filename);
   }
-  if (rank0 == 1 && fake_sleep_time_us != 0){
+  if (rank == 0 && fake_sleep_time_us != 0){
     spin_sleep(fake_sleep_time_us);
   }
   if(fake_errors){
