@@ -102,6 +102,7 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
 
   // the maximum time for any single operation
   double max_op_time;
+  timer phase_start_timer;
 } phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
@@ -120,6 +121,8 @@ struct benchmark_options{
   int iterations;
   int file_size;
   int read_only;
+  int stonewall_timer;
+  int stonewall_timer_wear_out;
 
   char * latency_file_prefix;
   int latency_keep_all;
@@ -144,7 +147,6 @@ struct benchmark_options{
   int size;
 };
 
-static timer global_timer;
 static int global_iteration = 0;
 
 struct benchmark_options o;
@@ -174,11 +176,11 @@ static void init_stats(phase_stat_t * p, int repeats){
   }
 }
 
-static void add_timed_result(timer start, time_result_t * results, size_t pos, double * max_time){
+static void add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time){
   double op_time = stop_timer(start);
   if (o.latency_file_prefix){
     results[pos].runtime = (float) op_time;
-    results[pos].time_since_app_start = timer_subtract(start, global_timer);
+    results[pos].time_since_app_start = timer_subtract(start, phase_start_timer);
   }
   if (op_time > *max_time){
     *max_time = op_time;
@@ -263,6 +265,10 @@ static void store_histogram(const char * name, time_result_t * times, size_t rep
     char file[1024];
     sprintf(file, "%s-%d-%s-%d.csv", o.latency_file_prefix, global_iteration, name, o.rank);
     FILE * f = fopen(file, "w+");
+    if(f == NULL){
+      printf("%d: Error writing to latency file: %s\n", o.rank, file);
+      return;
+    }
     fprintf(f, "time,runtime\n");
     for(size_t i = 0; i < repeats; i++){
       fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
@@ -271,14 +277,14 @@ static void store_histogram(const char * name, time_result_t * times, size_t rep
   }
 }
 
-static void end_phase(const char * name, phase_stat_t * p, timer start){
+static void end_phase(const char * name, phase_stat_t * p){
   int ret;
   char buff[4096];
 
   char * limit_memory_P = NULL;
-  p->t = stop_timer(start);
+  p->t = stop_timer(p->phase_start_timer);
   MPI_Barrier(MPI_COMM_WORLD);
-  p->t_incl_barrier = stop_timer(start);
+  p->t_incl_barrier = stop_timer(p->phase_start_timer);
 
   // prepare the summarized report
   phase_stat_t g_stat;
@@ -394,7 +400,7 @@ void run_precreate(phase_stat_t * s){
 
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
 
-      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
 
       if (ret == MD_NOOP){
         // do not increment any counter
@@ -413,7 +419,7 @@ void run_precreate(phase_stat_t * s){
 }
 
 /* FIFO: create a new file, write to it. Then read from the first created file, delete it... */
-void run_benchmark(phase_stat_t * s, int start_index){
+void run_benchmark(phase_stat_t * s, int * current_index_p){
   char dset[4096];
   char obj_name[4096];
   int ret;
@@ -421,6 +427,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
   memset(buf, o.rank % 256, o.file_size);
   timer op_timer; // timer for individual operations
   size_t pos = -1; // position inside the individual measurement array
+  int start_index = *current_index_p;
 
   for(int f=0; f < o.num; f++){
     for(int d=0; d < o.dset_count; d++){
@@ -445,7 +452,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
 
-      add_timed_result(op_timer, s->time_stat, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_stat, pos, & s->max_op_time);
 
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
@@ -463,7 +470,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
 
-      add_timed_result(op_timer, s->time_read, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_read, pos, & s->max_op_time);
 
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
@@ -489,7 +496,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
       o.plugin->delete_obj(dset, obj_name);
 
-      add_timed_result(op_timer, s->time_delete, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
 
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
@@ -516,7 +523,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
 
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
 
-      add_timed_result(op_timer, s->time_create, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
 
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
@@ -534,6 +541,7 @@ void run_benchmark(phase_stat_t * s, int start_index){
     }
   }
   free(buf);
+  *current_index_p += o.num;
 }
 
 void run_cleanup(phase_stat_t * s, int start_index){
@@ -554,7 +562,7 @@ void run_cleanup(phase_stat_t * s, int start_index){
 
       ret = o.plugin->delete_obj(dset, obj_name);
 
-      add_timed_result(op_timer, s->time_delete, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
 
       if (ret == MD_NOOP){
         // nothing to do
@@ -578,20 +586,22 @@ void run_cleanup(phase_stat_t * s, int start_index){
 static option_help options [] = {
   {'O', "offset", "Offset in o.ranks between writers and readers. Writers and readers should be located on different nodes.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.offset},
   {'i', "interface", "The interface (plugin) to use for the test, use list to show all compiled plugins.", OPTION_OPTIONAL_ARGUMENT, 's', & o.interface},
-  {'I', "obj-per-proc", "Number of I/O operations per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
+  {'I', "obj-per-proc", "Number of I/O operations per data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.num},
   {'L', "latency", "Measure the latency for individual operations, prefix the result files with the provided filename.", OPTION_OPTIONAL_ARGUMENT, 's', & o.latency_file_prefix},
   {0, "latency-all", "Keep the latency files from all ranks.", OPTION_FLAG, 'd', & o.latency_keep_all},
-  {'P', "precreate-per-set", "Number of object to precreate per process and data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
-  {'D', "data-sets", "Number of data sets and communication neighbors per iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
+  {'P', "precreate-per-set", "Number of object to precreate per data set.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.precreate},
+  {'D', "data-sets", "Number of data sets covered per process and iteration.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.dset_count},
   {'q', "quiet", "Avoid irrelevant printing.", OPTION_FLAG, 'd', & o.quiet_output},
   {'m', "lim-free-mem", "Allocate memory until this limit (in MiB) is reached.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory},
   {'M', "lim-free-mem-phase", "Allocate memory until this limit (in MiB) is reached between the phases, but free it before starting the next phase; the time is NOT included for the phase.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory_between_phases},
-  {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
   {'R', "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
+  {'w', "stonewall-timer", "Stop each benchmark iteration after the specified seconds (if not used with -W this leads to process-specific progress!)", OPTION_OPTIONAL_ARGUMENT, 'd', & o.stonewall_timer},
+  {'W', "stonewall-wear-out", "Stop with stonewall after specified time and use a soft wear-out phase -- all processes perform the same number of iterations", OPTION_FLAG, 'd', & o.stonewall_timer_wear_out},
+  {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
   {0, "read-only", "Run read-only during benchmarking phase (no deletes/writes), probably use with -2", OPTION_FLAG, 'd', & o.read_only},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
   {0, "process-reports", "Independent report per process/rank", OPTION_FLAG, 'd', & o.process_report},
@@ -742,7 +752,6 @@ int main(int argc, char ** argv){
 
   timer bench_start;
   start_timer(& bench_start);
-  timer tmp;
   phase_stat_t phase_stats;
 
   if(o.rank == 0 && o.print_detailed_stats && ! o.quiet_output){
@@ -761,31 +770,27 @@ int main(int argc, char ** argv){
     MPI_Barrier(MPI_COMM_WORLD);
 
     // pre-creation phase
-    start_timer(& global_timer);
-    start_timer(& tmp);
+    start_timer(& phase_stats.phase_start_timer);
     run_precreate(& phase_stats);
-    end_phase("precreate", & phase_stats, tmp);
+    end_phase("precreate", & phase_stats);
   }
 
   if (o.phase_benchmark){
     // benchmark phase
     for(global_iteration = 0; global_iteration < o.iterations; global_iteration++){
       init_stats(& phase_stats, o.num * o.dset_count);
-      start_timer(& global_timer);
-      start_timer(& tmp);
-      run_benchmark(& phase_stats, current_index);
-      current_index += o.num;
-      end_phase("benchmark", & phase_stats, tmp);
+      start_timer(& phase_stats.phase_start_timer);
+      run_benchmark(& phase_stats, & current_index);
+      end_phase("benchmark", & phase_stats);
     }
   }
 
   // cleanup phase
   if (o.phase_cleanup){
     init_stats(& phase_stats, o.precreate * o.dset_count);
-    start_timer(& global_timer);
-    start_timer(& tmp);
+    start_timer(& phase_stats.phase_start_timer);
     run_cleanup(& phase_stats, current_index);
-    end_phase("cleanup", & phase_stats, tmp);
+    end_phase("cleanup", & phase_stats);
 
     if (o.rank == 0){
       ret = o.plugin->purge_global();
