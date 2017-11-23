@@ -94,7 +94,7 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   op_stat_t obj_delete;
 
   // time measurements individual runs
-  size_t repeats;
+  uint64_t repeats;
   time_result_t * time_create;
   time_result_t * time_read;
   time_result_t * time_stat;
@@ -103,6 +103,7 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   // the maximum time for any single operation
   double max_op_time;
   timer phase_start_timer;
+  int stonewall_hit;
 } phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
@@ -246,10 +247,13 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     if(! o.quiet_output || errs > 0){
       pos = pos + sprintf(buff + pos, " (%d errs", errs);
       if(errs > 0){
-        sprintf(buff + pos, "!!!)" );
+        pos = pos + sprintf(buff + pos, "!!!)" );
       }else{
-        sprintf(buff + pos, ")" );
+        pos = pos + sprintf(buff + pos, ")" );
       }
+    }
+    if(! o.quiet_output && p->stonewall_hit){
+      pos = pos + sprintf(buff + pos, " stonewall-iter:%zu", p->repeats);
     }
   }
 }
@@ -298,6 +302,11 @@ static void end_phase(const char * name, phase_stat_t * p){
   CHECK_MPI_RET(ret)
   ret = MPI_Reduce(& p->max_op_time, & g_stat.max_op_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
+  if( p->stonewall_hit ){
+    ret = MPI_Reduce(& p->repeats, & g_stat.repeats, 1, MPI_UINT64_T, MPI_MIN, 0, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+    g_stat.stonewall_hit = 1;
+  }
 
   if (o.rank == 0){
     //print the stats:
@@ -519,7 +528,6 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       if (o.verbosity >= 2)
         printf("%d write %s:%s \n", o.rank, dset, obj_name);
 
-
       start_timer(& op_timer);
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
@@ -542,6 +550,7 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       if(o.verbosity){
         printf("%d: stonewall runtime %fs (%ds)\n", o.rank, bench_runtime, o.stonewall_timer);
       }
+      s->stonewall_hit = 1;
       if(! o.stonewall_timer_wear_out){
         break;
       }
@@ -557,6 +566,12 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   if(armed_stone_wall && o.stonewall_timer_wear_out){
     int f = total_num;
     int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
+    s->stonewall_hit = 1;
+  }
+  if(o.stonewall_timer && ! o.stonewall_timer_wear_out){
+    int sh = s->stonewall_hit;
+    int ret = MPI_Allreduce(& sh, & s->stonewall_hit, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
   }
   free(buf);
@@ -732,6 +747,11 @@ int main(int argc, char ** argv){
   if (!(o.phase_cleanup || o.phase_precreate || o.phase_benchmark)){
     // enable all phases
     o.phase_cleanup = o.phase_precreate = o.phase_benchmark = 1;
+  }
+  if (! o.phase_precreate && o.phase_benchmark && o.stonewall_timer && ! o.stonewall_timer_wear_out){
+    if(o.rank == 0)
+      printf("Invalid options, if running only the benchmark phase using -2 with stonewall option then use stonewall wear-out\n");
+    exit(1);
   }
 
   ret = o.plugin->initialize();
