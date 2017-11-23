@@ -431,6 +431,7 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   size_t pos = -1; // position inside the individual measurement array
   int start_index = *current_index_p;
   int total_num = o.num;
+  int armed_stone_wall = (o.stonewall_timer > 0);
 
   for(int f=0; f < total_num; f++){
     float bench_runtime = 0; // the time since start
@@ -537,11 +538,26 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
         s->obj_create.err++;
       }
     }
-    if(o.stonewall_timer > 0 && bench_runtime >= o.stonewall_timer ){
-      if(o.verbosity)
+    if(armed_stone_wall && bench_runtime >= o.stonewall_timer){
+      if(o.verbosity){
         printf("%d: stonewall runtime %fs (%ds)\n", o.rank, bench_runtime, o.stonewall_timer);
-      break;
+      }
+      if(! o.stonewall_timer_wear_out){
+        break;
+      }
+      armed_stone_wall = 0;
+      // wear out mode, now reduce the maximum
+      int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+      CHECK_MPI_RET(ret)
+      if(o.rank == 0){
+        printf("stonewall wear out %fs (%d iter)\n", bench_runtime, total_num);
+      }
     }
+  }
+  if(armed_stone_wall && o.stonewall_timer_wear_out){
+    int f = total_num;
+    int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
   }
   free(buf);
   *current_index_p += pos + 1;
