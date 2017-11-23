@@ -176,15 +176,17 @@ static void init_stats(phase_stat_t * p, int repeats){
   }
 }
 
-static void add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time){
+static float add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time){
+  float curtime = timer_subtract(start, phase_start_timer);
   double op_time = stop_timer(start);
   if (o.latency_file_prefix){
     results[pos].runtime = (float) op_time;
-    results[pos].time_since_app_start = timer_subtract(start, phase_start_timer);
+    results[pos].time_since_app_start = curtime;
   }
   if (op_time > *max_time){
     *max_time = op_time;
   }
+  return curtime;
 }
 
 static void print_detailed_stat_header(){
@@ -428,8 +430,10 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   timer op_timer; // timer for individual operations
   size_t pos = -1; // position inside the individual measurement array
   int start_index = *current_index_p;
+  int total_num = o.num;
 
-  for(int f=0; f < o.num; f++){
+  for(int f=0; f < total_num; f++){
+    float bench_runtime = 0; // the time since start
     for(int d=0; d < o.dset_count; d++){
       pos++;
       const int prevFile = f + start_index;
@@ -449,9 +453,7 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
 
 
       start_timer(& op_timer);
-
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
-
       add_timed_result(op_timer, s->phase_start_timer, s->time_stat, pos, & s->max_op_time);
 
       if(ret != MD_SUCCESS && ret != MD_NOOP){
@@ -467,10 +469,8 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       }
 
       start_timer(& op_timer);
-
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
-
-      add_timed_result(op_timer, s->phase_start_timer, s->time_read, pos, & s->max_op_time);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_read, pos, & s->max_op_time);
 
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
@@ -520,10 +520,8 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
 
 
       start_timer(& op_timer);
-
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-
-      add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
 
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
@@ -535,13 +533,19 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
           // do not increment any counter
       }else{
         if (o.verbosity)
-          printf("%d: Error while writing the obj: %s\n",o.rank, dset);
+          printf("%d: Error while writing the obj: %s\n", o.rank, dset);
         s->obj_create.err++;
       }
     }
+    if(o.stonewall_timer > 0 && bench_runtime >= o.stonewall_timer ){
+      if(o.verbosity)
+        printf("%d: stonewall runtime %fs (%ds)\n", o.rank, bench_runtime, o.stonewall_timer);
+      break;
+    }
   }
   free(buf);
-  *current_index_p += o.num;
+  *current_index_p += pos + 1;
+  s->repeats = pos + 1;
 }
 
 void run_cleanup(phase_stat_t * s, int start_index){
