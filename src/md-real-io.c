@@ -148,6 +148,8 @@ struct benchmark_options{
   int ignore_precreate_errors;
   int rank;
   int size;
+
+  float relative_waiting_factor;
 };
 
 static int global_iteration = 0;
@@ -166,6 +168,24 @@ void init_options(){
   o.run_info_file = "mdtest.status";
 }
 
+static void wait(double runtime){
+  double waittime = runtime * o.relative_waiting_factor;
+  //printf("waittime: %e\n", waittime);
+  if(waittime < 0.01){
+    timer start;
+    start_timer(& start);
+    double end = stop_timer(start) + waittime;
+    double cur = stop_timer(start);
+    while (cur < end){
+      cur = stop_timer(start);
+    }
+  }else{
+    struct timespec w;
+    w.tv_sec = (time_t) (waittime);
+    w.tv_nsec = (long) ((waittime - w.tv_sec) * 1000 * 1000 * 1000);
+    nanosleep(& w, NULL);
+  }
+}
 
 static void init_stats(phase_stat_t * p, int repeats){
   memset(p, 0, sizeof(phase_stat_t));
@@ -179,7 +199,7 @@ static void init_stats(phase_stat_t * p, int repeats){
   }
 }
 
-static float add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time){
+static float add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time, double * out_op_time){
   float curtime = timer_subtract(start, phase_start_timer);
   double op_time = stop_timer(start);
   if (o.latency_file_prefix){
@@ -189,6 +209,7 @@ static float add_timed_result(timer start, timer phase_start_timer, time_result_
   if (op_time > *max_time){
     *max_time = op_time;
   }
+  *out_op_time = op_time;
   return curtime;
 }
 
@@ -218,7 +239,7 @@ static double statistics_std_dev(int count, double * arr){
 }
 
 static void statistics_minmax(int count, double * arr, double * out_min, double * out_max){
-  double min = 0;
+  double min = 1e308;
   double max = 0;
   for(int i=0; i < o.size; i++){
     min = (arr[i] < min) ? arr[i] : min;
@@ -448,6 +469,7 @@ void run_precreate(phase_stat_t * s){
   memset(buf, o.rank % 256, o.file_size);
   timer op_timer; // timer for individual operations
   size_t pos = -1; // position inside the individual measurement array
+  double op_time;
 
   // create the obj
   for(int f=0; f < o.precreate; f++){
@@ -467,7 +489,7 @@ void run_precreate(phase_stat_t * s){
 
       start_timer(& op_timer);
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-      add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time, & op_time);
 
       if (o.verbosity >= 2){
         printf("%d: write %s:%s (%d)\n", o.rank, dset, obj_name, ret);
@@ -506,8 +528,9 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   for(f=0; f < total_num; f++){
     float bench_runtime = 0; // the time since start
     for(int d=0; d < o.dset_count; d++){
-      pos++;
+      double op_time;
       const int prevFile = f + start_index;
+      pos++;
 
       int readRank = (o.rank - o.offset * (d+1)) % o.size;
       readRank = readRank < 0 ? readRank + o.size : readRank;
@@ -520,7 +543,10 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
 
       start_timer(& op_timer);
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
-      add_timed_result(op_timer, s->phase_start_timer, s->time_stat, pos, & s->max_op_time);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_stat, pos, & s->max_op_time, & op_time);
+      if(o.relative_waiting_factor > 1e-9) {
+        wait(op_time);
+      }
 
       if (o.verbosity >= 2){
         printf("%d: stat %s:%s (%d)\n", o.rank, dset, obj_name, ret);
@@ -540,7 +566,10 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
 
       start_timer(& op_timer);
       ret = o.plugin->read_obj(dset, obj_name, buf, o.file_size);
-      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_read, pos, & s->max_op_time);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_read, pos, & s->max_op_time, & op_time);
+      if(o.relative_waiting_factor > 1e-9) {
+        wait(op_time);
+      }
 
       if (ret == MD_SUCCESS){
         s->obj_read.suc++;
@@ -559,8 +588,11 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       }
 
       start_timer(& op_timer);
-      o.plugin->delete_obj(dset, obj_name);
-      add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
+      ret = o.plugin->delete_obj(dset, obj_name);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time, & op_time);
+      if(o.relative_waiting_factor > 1e-9) {
+        wait(op_time);
+      }
 
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s (%d)\n", o.rank, dset, obj_name, ret);
@@ -585,7 +617,10 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
 
       start_timer(& op_timer);
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
+      bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time, & op_time);
+      if(o.relative_waiting_factor > 1e-9) {
+        wait(op_time);
+      }
 
       if (o.verbosity >= 2){
         printf("%d: write %s:%s (%d)\n", o.rank, dset, obj_name, ret);
@@ -653,12 +688,13 @@ void run_cleanup(phase_stat_t * s, int start_index){
     ret = o.plugin->def_dset_name(dset, o.rank, d);
 
     for(int f=0; f < o.precreate; f++){
+      double op_time;
       pos++;
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + start_index);
 
       start_timer(& op_timer);
       ret = o.plugin->delete_obj(dset, obj_name);
-      add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
+      add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time, & op_time);
 
       if (o.verbosity >= 2){
         printf("%d: delete %s:%s (%d)\n", o.rank, dset, obj_name, ret);
@@ -700,7 +736,8 @@ static option_help options [] = {
   {'m', "lim-free-mem", "Allocate memory until this limit (in MiB) is reached.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory},
   {'M', "lim-free-mem-phase", "Allocate memory until this limit (in MiB) is reached between the phases, but free it before starting the next phase; the time is NOT included for the phase.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.limit_memory_between_phases},
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
-  {'R', "iterations", "Rerun the main phase multiple times", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
+  {'R', "iterations", "Number of times to rerun the main phase", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
+  {'t', "waiting-time", "Waiting time relative to runtime (1.0 is 100%%)", OPTION_OPTIONAL_ARGUMENT, 'f', & o.relative_waiting_factor},
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
