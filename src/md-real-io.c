@@ -79,6 +79,16 @@ typedef struct{
   float runtime;
 } time_result_t;
 
+typedef struct{
+  float min;
+  float q1;
+  float median;
+  float q3;
+  float q90;
+  float q99;
+  float max;
+} time_statistics_t;
+
 // statistics for running a single phase
 typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   double t; // maximum time
@@ -101,6 +111,11 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   time_result_t * time_read;
   time_result_t * time_stat;
   time_result_t * time_delete;
+
+  time_statistics_t stats_create;
+  time_statistics_t stats_read;
+  time_statistics_t stats_stat;
+  time_statistics_t stats_delete;
 
   // the maximum time for any single operation
   double max_op_time;
@@ -188,25 +203,21 @@ static void wait(double runtime){
   }
 }
 
-static void init_stats(phase_stat_t * p, int repeats){
+static void init_stats(phase_stat_t * p, size_t repeats){
   memset(p, 0, sizeof(phase_stat_t));
   p->repeats = repeats;
-  if (o.latency_file_prefix && repeats > 0){
-      size_t timer_size = repeats * sizeof(time_result_t);
-      p->time_create = (time_result_t *)  malloc(timer_size);
-      p->time_read = (time_result_t *) malloc(timer_size);
-      p->time_stat = (time_result_t *) malloc(timer_size);
-      p->time_delete = (time_result_t *) malloc(timer_size);
-  }
+  size_t timer_size = repeats * sizeof(time_result_t);
+  p->time_create = (time_result_t *) malloc(timer_size);
+  p->time_read = (time_result_t *) malloc(timer_size);
+  p->time_stat = (time_result_t *) malloc(timer_size);
+  p->time_delete = (time_result_t *) malloc(timer_size);
 }
 
 static float add_timed_result(timer start, timer phase_start_timer, time_result_t * results, size_t pos, double * max_time, double * out_op_time){
   float curtime = timer_subtract(start, phase_start_timer);
   double op_time = stop_timer(start);
-  if (o.latency_file_prefix){
-    results[pos].runtime = (float) op_time;
-    results[pos].time_since_app_start = curtime;
-  }
+  results[pos].runtime = (float) op_time;
+  results[pos].time_since_app_start = curtime;
   if (op_time > *max_time){
     *max_time = op_time;
   }
@@ -292,6 +303,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           p->obj_read.suc / t,
           tp,
           p->max_op_time);
+
         if(o.relative_waiting_factor > 1e-9){
           pos += sprintf(buff + pos, " waiting_factor:%.2f", o.relative_waiting_factor);
         }
@@ -331,32 +343,85 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     if(! o.quiet_output && p->stonewall_hit){
       pos += sprintf(buff + pos, " stonewall-iter:%zu", p->repeats);
     }
+
+    if(p->stats_read.max > 1e-9){
+      time_statistics_t stat = p->stats_read;
+      pos += sprintf(buff + pos, " read(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
+    }else if(p->stats_stat.max > 1e-9){
+      time_statistics_t stat = p->stats_stat;
+      pos += sprintf(buff + pos, " stat(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
+    }else if(p->stats_create.max > 1e-9){
+      time_statistics_t  stat = p->stats_create;
+      pos += sprintf(buff + pos, " create(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
+    }else if(p->stats_delete.max > 1e-9){
+      time_statistics_t stat = p->stats_delete;
+      pos += sprintf(buff + pos, " delete(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
+    }
   }
 }
 
-//static int compare_floats(float * x, float * y){
-//  return *x<*y ? -1 : (*x>*y ? +1 : 0);
-//}
+static int compare_floats(time_result_t * x, time_result_t * y){
+  return x->runtime < y->runtime ? -1 : (x->runtime > y->runtime ? +1 : 0);
+}
 
-static void store_histogram(const char * name, time_result_t * times, size_t repeats){
-  if(o.rank == 0 || o.latency_keep_all){
-    //qsort(times, repeats, sizeof(float), (int (*)(const void *, const void *)) compare_floats);
-    //float mn = times[0];
-    //float mx = times[repeats - 1];
-    //int buckets = 20;
-    char file[1024];
-    sprintf(file, "%s-%.2f-%d-%s-%d.csv", o.latency_file_prefix, o.relative_waiting_factor, global_iteration, name, o.rank);
-    FILE * f = fopen(file, "w+");
-    if(f == NULL){
-      printf("%d: Error writing to latency file: %s\n", o.rank, file);
-      return;
+static double runtime_quantile(int repeats, time_result_t * times, float quantile){
+  int pos = round(quantile * repeats + 0.49);
+  return times[pos].runtime;
+}
+
+static uint64_t aggregate_timers(int repeats, int max_repeats, time_result_t * times, time_result_t * global_times){
+  uint64_t count = 0;
+  int ret;
+  // due to stonewall, the number of repeats may be different per process
+  if(o.rank == 0){
+    MPI_Status status;
+    memcpy(global_times, times, repeats * 2 * sizeof(float));
+    count += repeats;
+    for(int i=1; i < o.size; i++){
+      int cnt;
+      ret = MPI_Recv(& global_times[count], max_repeats*2, MPI_FLOAT, i, 888, MPI_COMM_WORLD, & status);
+      CHECK_MPI_RET(ret)
+      MPI_Get_count(& status, MPI_FLOAT, & cnt);
+      count += cnt / 2;
     }
-    fprintf(f, "time,runtime\n");
-    for(size_t i = 0; i < repeats; i++){
-      fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
-    }
-    fclose(f);
+  }else{
+    ret = MPI_Send(times, repeats * 2, MPI_FLOAT, 0, 888, MPI_COMM_WORLD);
+    CHECK_MPI_RET(ret)
   }
+
+  return count;
+}
+
+static void compute_histogram(const char * name, time_result_t * times, time_statistics_t * stats, size_t repeats){
+  if(o.rank == 0 || o.latency_keep_all){
+    if(o.latency_file_prefix){
+      char file[1024];
+      sprintf(file, "%s-%.2f-%d-%s-%d.csv", o.latency_file_prefix, o.relative_waiting_factor, global_iteration, name, o.rank);
+      FILE * f = fopen(file, "w+");
+      if(f == NULL){
+        printf("%d: Error writing to latency file: %s\n", o.rank, file);
+        return;
+      }
+      fprintf(f, "time,runtime\n");
+      for(size_t i = 0; i < repeats; i++){
+        fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
+      }
+      fclose(f);
+    }
+  }
+  // now sort the times and pick the quantiles
+  qsort(times, repeats, sizeof(time_result_t), (int (*)(const void *, const void *)) compare_floats);
+  stats->min = times[0].runtime;
+  stats->q1 = runtime_quantile(repeats, times, 0.25);
+  if(repeats % 2 == 0){
+    stats->median = (times[repeats/2].runtime + times[repeats/2 - 1].runtime)/2.0;
+  }else{
+    stats->median = times[repeats/2].runtime;
+  }
+  stats->q3 = runtime_quantile(repeats, times, 0.75);
+  stats->q90 = runtime_quantile(repeats, times, 0.90);
+  stats->q99 = runtime_quantile(repeats, times, 0.99);
+  stats->max = times[repeats - 1].runtime;
 }
 
 static void end_phase(const char * name, phase_stat_t * p){
@@ -368,9 +433,14 @@ static void end_phase(const char * name, phase_stat_t * p){
   MPI_Barrier(MPI_COMM_WORLD);
   p->t_incl_barrier = stop_timer(p->phase_start_timer);
 
+  int max_repeats = o.precreate * o.dset_count;
+  if(strcmp(name,"benchmark") == 0){
+    max_repeats = o.num * o.dset_count;
+  }
+
   // prepare the summarized report
   phase_stat_t g_stat;
-  init_stats(& g_stat, 0);
+  init_stats(& g_stat, (o.rank == 0 ? 1 : 0) * ((size_t) max_repeats) * o.size);
   // reduce timers
   ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
@@ -387,6 +457,46 @@ static void end_phase(const char * name, phase_stat_t * p){
     ret = MPI_Reduce(& p->repeats, & g_stat.repeats, 1, MPI_UINT64_T, MPI_MIN, 0, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
     g_stat.stonewall_hit = 1;
+  }
+
+  if(strcmp(name,"precreate") == 0){
+    uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_create, g_stat.time_create);
+    if(o.rank == 0) {
+      compute_histogram("precreate-all", g_stat.time_create, & g_stat.stats_create, repeats);
+    }
+    compute_histogram("precreate", p->time_create, & p->stats_create, p->repeats);
+  }else if(strcmp(name,"cleanup") == 0){
+    uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_delete, g_stat.time_delete);
+    if(o.rank == 0) {
+      compute_histogram("cleanup-all", g_stat.time_delete, & g_stat.stats_delete, repeats);
+    }
+    compute_histogram("cleanup", p->time_delete, & p->stats_delete, p->repeats);
+  }else if(strcmp(name,"benchmark") == 0){
+    uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_read, g_stat.time_read);
+    if(o.rank == 0) {
+      compute_histogram("read-all", g_stat.time_read, & g_stat.stats_read, repeats);
+    }
+    compute_histogram("read", p->time_read, & p->stats_read, p->repeats);
+
+    repeats = aggregate_timers(p->repeats, max_repeats, p->time_stat, g_stat.time_stat);
+    if(o.rank == 0) {
+      compute_histogram("stat-all", g_stat.time_stat, & g_stat.stats_stat, repeats);
+    }
+    compute_histogram("stat", p->time_stat, & p->stats_stat, p->repeats);
+
+    if(! o.read_only){
+      repeats = aggregate_timers(p->repeats, max_repeats, p->time_create, g_stat.time_create);
+      if(o.rank == 0) {
+        compute_histogram("create-all", g_stat.time_create, & g_stat.stats_create, repeats);
+      }
+      compute_histogram("create", p->time_create, & p->stats_create, p->repeats);
+
+      repeats = aggregate_timers(p->repeats, max_repeats, p->time_delete, g_stat.time_delete);
+      if(o.rank == 0) {
+        compute_histogram("delete-all", g_stat.time_delete, & g_stat.stats_delete, repeats);
+      }
+      compute_histogram("delete", p->time_delete, & p->stats_delete, p->repeats);
+    }
   }
 
   if (o.rank == 0){
@@ -409,28 +519,20 @@ static void end_phase(const char * name, phase_stat_t * p){
     }
   }
 
-  if(p->time_create != NULL){
-    if(strcmp(name,"precreate") == 0){
-      store_histogram("precreate", p->time_create, p->repeats);
-    }else if(strcmp(name,"cleanup") == 0){
-      store_histogram("cleanup", p->time_delete, p->repeats);
-    }else if(strcmp(name,"benchmark") == 0){
-      store_histogram("read", p->time_read, p->repeats);
-      store_histogram("stat", p->time_stat, p->repeats);
-      if(! o.read_only){
-        store_histogram("create", p->time_create, p->repeats);
-        store_histogram("delete", p->time_delete, p->repeats);
-      }
-    }
-  }
   if(g_stat.t_all){
     free(g_stat.t_all);
   }
-  if (p->time_create){
+  if(p->time_create){
     free(p->time_create);
     free(p->time_read);
     free(p->time_stat);
     free(p->time_delete);
+  }
+  if(g_stat.time_create){
+    free(g_stat.time_create);
+    free(g_stat.time_read);
+    free(g_stat.time_stat);
+    free(g_stat.time_delete);
   }
 
   // allocate if necessary
