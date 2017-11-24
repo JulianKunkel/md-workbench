@@ -1043,6 +1043,9 @@ int main(int argc, char ** argv){
   if (o.phase_benchmark){
     // benchmark phase
     for(global_iteration = 0; global_iteration < o.iterations; global_iteration++){
+      if(o.adaptive_waiting_mode){
+        o.relative_waiting_factor = 0;
+      }
       init_stats(& phase_stats, o.num * o.dset_count);
       MPI_Barrier(MPI_COMM_WORLD);
       start_timer(& phase_stats.phase_start_timer);
