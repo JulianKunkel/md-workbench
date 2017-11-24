@@ -160,7 +160,7 @@ void init_options(){
   o.dset_count = 10;
   o.offset = 1;
   o.iterations = 3;
-  o.file_size = 3900;
+  o.file_size = 3901;
   o.run_info_file = "mdtest.status";
 }
 
@@ -408,10 +408,12 @@ void run_precreate(phase_stat_t * s){
       }
 
       start_timer(& op_timer);
-
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
-
       add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
+
+      if (o.verbosity >= 2){
+        printf("%d: write %s:%s (%d)\n", o.rank, dset, obj_name, ret);
+      }
 
       if (ret == MD_NOOP){
         // do not increment any counter
@@ -441,8 +443,9 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   int start_index = *current_index_p;
   int total_num = o.num;
   int armed_stone_wall = (o.stonewall_timer > 0);
+  int f;
 
-  for(int f=0; f < total_num; f++){
+  for(f=0; f < total_num; f++){
     float bench_runtime = 0; // the time since start
     for(int d=0; d < o.dset_count; d++){
       pos++;
@@ -457,14 +460,13 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       }
       ret = o.plugin->def_dset_name(dset, readRank, d);
 
-      if (o.verbosity >= 2){
-        printf("%d: stat %s:%s \n", o.rank, dset, obj_name);
-      }
-
-
       start_timer(& op_timer);
       ret = o.plugin->stat_obj(dset, obj_name, o.file_size);
       add_timed_result(op_timer, s->phase_start_timer, s->time_stat, pos, & s->max_op_time);
+
+      if (o.verbosity >= 2){
+        printf("%d: stat %s:%s (%d)\n", o.rank, dset, obj_name, ret);
+      }
 
       if(ret != MD_SUCCESS && ret != MD_NOOP){
         if (o.verbosity)
@@ -498,15 +500,13 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
         continue;
       }
 
-      if (o.verbosity >= 2){
-        printf("%d: delete %s:%s \n", o.rank, dset, obj_name);
-      }
-
       start_timer(& op_timer);
-
       o.plugin->delete_obj(dset, obj_name);
-
       add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
+
+      if (o.verbosity >= 2){
+        printf("%d: delete %s:%s (%d)\n", o.rank, dset, obj_name, ret);
+      }
 
       if (ret == MD_SUCCESS){
         s->obj_delete.suc++;
@@ -525,12 +525,13 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       }
       ret = o.plugin->def_dset_name(dset, writeRank, d);
 
-      if (o.verbosity >= 2)
-        printf("%d write %s:%s \n", o.rank, dset, obj_name);
-
       start_timer(& op_timer);
       ret = o.plugin->write_obj(dset, obj_name, buf, o.file_size);
       bench_runtime = add_timed_result(op_timer, s->phase_start_timer, s->time_create, pos, & s->max_op_time);
+
+      if (o.verbosity >= 2){
+        printf("%d: write %s:%s (%d)\n", o.rank, dset, obj_name, ret);
+      }
 
       if (ret == MD_SUCCESS){
           s->obj_create.suc++;
@@ -577,8 +578,8 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   }
 
   if(! o.read_only) {
-    *current_index_p += pos + 1;
-  }    
+    *current_index_p += f;
+  }
   s->repeats = pos + 1;
   free(buf);
 }
@@ -598,10 +599,12 @@ void run_cleanup(phase_stat_t * s, int start_index){
       ret = o.plugin->def_obj_name(obj_name, o.rank, d, f + start_index);
 
       start_timer(& op_timer);
-
       ret = o.plugin->delete_obj(dset, obj_name);
-
       add_timed_result(op_timer, s->phase_start_timer, s->time_delete, pos, & s->max_op_time);
+
+      if (o.verbosity >= 2){
+        printf("%d: delete %s:%s (%d)\n", o.rank, dset, obj_name, ret);
+      }
 
       if (ret == MD_NOOP){
         // nothing to do
@@ -613,6 +616,11 @@ void run_cleanup(phase_stat_t * s, int start_index){
     }
 
     ret = o.plugin->rm_dset(dset);
+
+    if (o.verbosity >= 2){
+      printf("%d: delete dset %s (%d)\n", o.rank, dset, ret);
+    }
+
     if (ret == MD_SUCCESS){
       s->dset_delete.suc++;
     }else if (ret != MD_NOOP){
@@ -725,6 +733,15 @@ int main(int argc, char ** argv){
   MPI_Init(& argc, & argv);
   MPI_Comm_rank(MPI_COMM_WORLD, & o.rank);
   MPI_Comm_size(MPI_COMM_WORLD, & o.size);
+
+  if (o.rank == 0 && ! o.quiet_output){
+    printf("Args: %s", argv[0]);
+    for(int i=1; i < argc; i++){
+      printf(" \"%s\"", argv[i]);
+    }
+    printf("\n");
+  }
+
   int parsed = parseOptions(argc, argv, options, & printhelp);
 
   find_interface();
