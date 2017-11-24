@@ -257,11 +257,15 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     if(o.rank == 0){
       pos += sprintf(buff + pos, "min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
     }
+    int ioops_per_iter = 4;
+    if(o.read_only){
+      ioops_per_iter = 2;
+    }
 
     switch(name[0]){
       case('b'):
         pos += sprintf(buff + pos, "rate:%.1f iops/s objects:%d rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
-          p->obj_read.suc * 4 / t, // write, stat, read, delete
+          p->obj_read.suc * ioops_per_iter / t, // write, stat, read, delete
           p->obj_read.suc,
           p->obj_read.suc / t,
           tp,
