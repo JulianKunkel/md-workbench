@@ -150,6 +150,7 @@ struct benchmark_options{
   int size;
 
   float relative_waiting_factor;
+  int adaptive_waiting_mode;
 };
 
 static int global_iteration = 0;
@@ -291,6 +292,9 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           p->obj_read.suc / t,
           tp,
           p->max_op_time);
+        if(o.relative_waiting_factor > 1e-9){
+          pos += sprintf(buff + pos, " waiting_factor:%.2f", o.relative_waiting_factor);
+        }
         break;
       case('p'):
         pos += sprintf(buff + pos, "rate:%.1f iops/s dsets: %d objects:%d rate:%.3f dset/s rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
@@ -341,7 +345,7 @@ static void store_histogram(const char * name, time_result_t * times, size_t rep
     //float mx = times[repeats - 1];
     //int buckets = 20;
     char file[1024];
-    sprintf(file, "%s-%d-%s-%d.csv", o.latency_file_prefix, global_iteration, name, o.rank);
+    sprintf(file, "%s-%.2f-%d-%s-%d.csv", o.latency_file_prefix, o.relative_waiting_factor, global_iteration, name, o.rank);
     FILE * f = fopen(file, "w+");
     if(f == NULL){
       printf("%d: Error writing to latency file: %s\n", o.rank, file);
@@ -411,10 +415,12 @@ static void end_phase(const char * name, phase_stat_t * p){
     }else if(strcmp(name,"cleanup") == 0){
       store_histogram("cleanup", p->time_delete, p->repeats);
     }else if(strcmp(name,"benchmark") == 0){
-      store_histogram("create", p->time_create, p->repeats);
       store_histogram("read", p->time_read, p->repeats);
       store_histogram("stat", p->time_stat, p->repeats);
-      store_histogram("delete", p->time_delete, p->repeats);
+      if(! o.read_only){
+        store_histogram("create", p->time_create, p->repeats);
+        store_histogram("delete", p->time_delete, p->repeats);
+      }
     }
   }
   if(g_stat.t_all){
@@ -738,6 +744,7 @@ static option_help options [] = {
   {'S', "object-size", "Size for the created objects.", OPTION_OPTIONAL_ARGUMENT, 'd', & o.file_size},
   {'R', "iterations", "Number of times to rerun the main phase", OPTION_OPTIONAL_ARGUMENT, 'd', & o.iterations},
   {'t', "waiting-time", "Waiting time relative to runtime (1.0 is 100%%)", OPTION_OPTIONAL_ARGUMENT, 'f', & o.relative_waiting_factor},
+  {'T', "adaptive-waiting", "Compute an adaptive waiting time", OPTION_FLAG, 'd', & o.adaptive_waiting_mode},
   {'1', "run-precreate", "Run precreate phase", OPTION_FLAG, 'd', & o.phase_precreate},
   {'2', "run-benchmark", "Run benchmark phase", OPTION_FLAG, 'd', & o.phase_benchmark},
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
@@ -935,9 +942,22 @@ int main(int argc, char ** argv){
     // benchmark phase
     for(global_iteration = 0; global_iteration < o.iterations; global_iteration++){
       init_stats(& phase_stats, o.num * o.dset_count);
+      MPI_Barrier(MPI_COMM_WORLD);
       start_timer(& phase_stats.phase_start_timer);
       run_benchmark(& phase_stats, & current_index);
       end_phase("benchmark", & phase_stats);
+
+      if(o.adaptive_waiting_mode){
+        o.relative_waiting_factor = 0.0625;
+        for(int r=0; r <= 6; r++){
+          init_stats(& phase_stats, o.num * o.dset_count);
+          MPI_Barrier(MPI_COMM_WORLD);
+          start_timer(& phase_stats.phase_start_timer);
+          run_benchmark(& phase_stats, & current_index);
+          end_phase("benchmark", & phase_stats);
+          o.relative_waiting_factor *= 2;
+        }
+      }
     }
   }
 

@@ -39,24 +39,28 @@ print(sprintf("stat quantiles 0.1: %e 0.9: %e", quantile(d4$runtime, 0.1), quant
 print(summary(d4$runtime))
 
 
+lim = scale_y_log10(limits=c(1e-4, 10))
+lim = scale_y_log10()
+
 
 d = rbind(d1, d2, d3, d4)
 
-p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + scale_y_log10(limits=c(1e-4, 10)) + theme(legend.position="bottom") + xlimTimeline
+p = ggplot(d, aes(x=time,y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("time") + ylab("runtime") + lim + theme(legend.position="bottom") + xlimTimeline
 ggsave(sprintf("%s-timeline-%d.pdf", input, process), plot=p, width=8, height=5)
 
-p = ggplot(d, aes(x=runtime,col=type)) + geom_density(alpha=.2)  + scale_x_log10(limits=c(1e-4, 10)) +   theme(legend.position="bottom") # +  geom_histogram(aes(y=..density..), binwidth=.5, colour="black", fill="white")
+p = ggplot(d, aes(x=runtime,col=type)) + geom_density(alpha=.2)  + scale_x_log10(limits=c(1e-4, 10)) +
+theme(legend.position="bottom") # +  geom_histogram(aes(y=..density..), binwidth=.5, colour="black", fill="white")
 ggsave(sprintf("%s-density-%d.pdf", input, process), plot=p, width=8, height=5)
 
-p = ggplot(d, aes(x=type, y=runtime, fill=type)) + xlab("") + geom_boxplot() + scale_y_log10(limits=c(1e-4, 10)) +   theme(legend.position="bottom")
+p = ggplot(d, aes(x=type, y=runtime, fill=type)) + xlab("") + geom_boxplot() + lim +   theme(legend.position="bottom")
 ggsave(sprintf("%s-runtime-%d.pdf", input, process), plot=p, width=8, height=5)
 
 d = d[ order(d$runtime),]
 d$pos = (1:nrow(d))/nrow(d)
-p = ggplot(d, aes(x=pos, y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("fraction of measurements") + ylab("runtime") + scale_y_log10(limits=c(1e-4, 10)) +   theme(legend.position="bottom")
+p = ggplot(d, aes(x=pos, y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("fraction of measurements") + ylab("runtime") + lim +   theme(legend.position="bottom")
 ggsave(sprintf("%s-waittimes-all-%d.pdf", input, process), plot=p, width=8, height=5)
 
-p = ggplot(d, aes(x=pos, y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("fraction of measurements") + ylab("runtime") + scale_y_log10(limits=c(1e-4, 10)) + facet_grid(type ~ .) + theme(legend.position="none")
+p = ggplot(d, aes(x=pos, y=runtime,col=type)) + geom_point(alpha=.4, size=1) + xlab("fraction of measurements") + ylab("runtime") + lim + facet_grid(type ~ .) + theme(legend.position="none")
 ggsave(sprintf("%s-waittimes-%d.pdf", input, process), plot=p, width=8, height=5)
 
 
