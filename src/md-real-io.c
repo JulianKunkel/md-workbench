@@ -545,7 +545,8 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
           printf("%d: Error while writing the obj: %s\n", o.rank, dset);
         s->obj_create.err++;
       }
-    }
+    } // end loop
+
     if(armed_stone_wall && bench_runtime >= o.stonewall_timer){
       if(o.verbosity){
         printf("%d: stonewall runtime %fs (%ds)\n", o.rank, bench_runtime, o.stonewall_timer);
@@ -574,9 +575,12 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
     int ret = MPI_Allreduce(& sh, & s->stonewall_hit, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
   }
-  free(buf);
-  *current_index_p += pos + 1;
+
+  if(! o.read_only) {
+    *current_index_p += pos + 1;
+  }    
   s->repeats = pos + 1;
+  free(buf);
 }
 
 void run_cleanup(phase_stat_t * s, int start_index){
