@@ -253,20 +253,22 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
   }else{
     int pos = 0;
     // single line
-    pos = sprintf(buff, "%s process max:%.1fs", name, t);
-    pos = pos + sprintf(buff + pos, " min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
+    pos += sprintf(buff, "%s process max:%.1fs ", name, t);
+    if(o.rank == 0){
+      pos += sprintf(buff + pos, "min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
+    }
 
     switch(name[0]){
       case('b'):
-        pos = sprintf(buff + pos, "tot:%.1f iops/s %d obj %.1f obj/s %.1f Mib/s op-max:%.4es",
-          p->obj_create.suc * 4 / t, // write, stat, read, delete
-          p->obj_create.suc,
-          p->obj_create.suc / t,
+        pos += sprintf(buff + pos, "rate:%.1f iops/s objects:%d rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
+          p->obj_read.suc * 4 / t, // write, stat, read, delete
+          p->obj_read.suc,
+          p->obj_read.suc / t,
           tp,
           p->max_op_time);
         break;
       case('p'):
-        pos = sprintf(buff + pos, "tot:%.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s op-max:%.4es",
+        pos += sprintf(buff + pos, "rate:%.1f iops/s dsets: %d objects:%d rate:%.3f dset/s rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
           (p->dset_create.suc + p->obj_create.suc) / t,
           p->dset_create.suc,
           p->obj_create.suc,
@@ -276,7 +278,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           p->max_op_time);
         break;
       case('c'):
-        pos = sprintf(buff + pos, "tot:%.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s op-max:%.4es",
+        pos += sprintf(buff + pos, "rate:%.1f iops/s objects:%d dsets: %d rate:%.1f obj/s rate:%.3f dset/s op-max:%.4es",
           (p->obj_delete.suc + p->dset_delete.suc) / t,
           p->obj_delete.suc,
           p->dset_delete.suc,
@@ -290,15 +292,15 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     }
 
     if(! o.quiet_output || errs > 0){
-      pos = pos + sprintf(buff + pos, " (%d errs", errs);
+      pos += sprintf(buff + pos, " (%d errs", errs);
       if(errs > 0){
-        pos = pos + sprintf(buff + pos, "!!!)" );
+        pos += sprintf(buff + pos, "!!!)" );
       }else{
-        pos = pos + sprintf(buff + pos, ")" );
+        pos += sprintf(buff + pos, ")" );
       }
     }
     if(! o.quiet_output && p->stonewall_hit){
-      pos = pos + sprintf(buff + pos, " stonewall-iter:%zu", p->repeats);
+      pos += sprintf(buff + pos, " stonewall-iter:%zu", p->repeats);
     }
   }
 }
