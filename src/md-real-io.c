@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <md_util.h>
 #include <md_option.h>
@@ -80,8 +81,9 @@ typedef struct{
 
 // statistics for running a single phase
 typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
-  double t;
+  double t; // maximum time
   double t_incl_barrier;
+  double * t_all;
 
   op_stat_t dset_name;
   op_stat_t dset_create;
@@ -198,10 +200,49 @@ static int sum_err(phase_stat_t * p){
   return p->dset_name.err + p->dset_create.err +  p->dset_delete.err + p->obj_name.err + p->obj_create.err + p->obj_read.err + p->obj_stat.err + p->obj_delete.err;
 }
 
+static double statistics_mean(int count, double * arr){
+  double sum = 0;
+  for(int i=0; i < o.size; i++){
+    sum += arr[i];
+  }
+  return sum / o.size;
+}
+
+static double statistics_std_dev(int count, double * arr){
+  double mean = statistics_mean(count, arr);
+  double sum = 0;
+  for(int i=0; i < o.size; i++){
+    sum += (mean - arr[i])*(mean - arr[i]);
+  }
+  return sqrt(sum / (o.size-1));
+}
+
+static void statistics_minmax(int count, double * arr, double * out_min, double * out_max){
+  double min = 0;
+  double max = 0;
+  for(int i=0; i < o.size; i++){
+    min = (arr[i] < min) ? arr[i] : min;
+    max = (arr[i] > max) ? arr[i] : max;
+  }
+  *out_min = min;
+  *out_max = max;
+}
+
 static void print_p_stat(char * buff, const char * name, phase_stat_t * p, double t){
   const double tp = (double)(p->obj_create.suc + p->obj_read.suc) * o.file_size / t / 1024 / 1024;
 
   const int errs = sum_err(p);
+  double r_min = 0;
+  double r_max = 0;
+  double r_mean = 0;
+  double r_std = 0;
+
+  if(p->t_all){
+    // we can compute several derived values that provide insight about quality of service, latency distribution and load balancing
+    statistics_minmax(o.size, p->t_all, & r_min, & r_max);
+    r_mean = statistics_mean(o.size, p->t_all);
+    r_std = statistics_std_dev(o.size, p->t_all);
+  }
 
   if (o.print_detailed_stats){
     sprintf(buff, "%s \t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%.3fs\t%.3fs\t%.2f MiB/s %.4e", name, p->dset_name.suc, p->dset_create.suc,  p->dset_delete.suc, p->obj_name.suc, p->obj_create.suc, p->obj_read.suc,  p->obj_stat.suc, p->obj_delete.suc, p->t, t, tp, p->max_op_time);
@@ -212,9 +253,12 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
   }else{
     int pos = 0;
     // single line
+    pos = sprintf(buff, "%s process max:%.1fs", name, t);
+    pos = pos + sprintf(buff + pos, " min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
+
     switch(name[0]){
       case('b'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %.1f obj/s %.1f Mib/s max %.4es", name, t,
+        pos = sprintf(buff + pos, "tot:%.1f iops/s %d obj %.1f obj/s %.1f Mib/s op-max:%.4es",
           p->obj_create.suc * 4 / t, // write, stat, read, delete
           p->obj_create.suc,
           p->obj_create.suc / t,
@@ -222,7 +266,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           p->max_op_time);
         break;
       case('p'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s max %.4es", name, t,
+        pos = sprintf(buff + pos, "tot:%.1f iops/s %d dset %d obj %.3f dset/s %.1f obj/s %.1f Mib/s op-max:%.4es",
           (p->dset_create.suc + p->obj_create.suc) / t,
           p->dset_create.suc,
           p->obj_create.suc,
@@ -232,7 +276,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
           p->max_op_time);
         break;
       case('c'):
-        pos = sprintf(buff, "%s %.1fs %.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s max %.4es", name, t,
+        pos = sprintf(buff + pos, "tot:%.1f iops/s %d obj %d dset %.1f obj/s %.3f dset/s op-max:%.4es",
           (p->obj_delete.suc + p->dset_delete.suc) / t,
           p->obj_delete.suc,
           p->dset_delete.suc,
@@ -244,6 +288,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
         pos = sprintf(buff, "%s: unknown phase", name);
       break;
     }
+
     if(! o.quiet_output || errs > 0){
       pos = pos + sprintf(buff + pos, " (%d errs", errs);
       if(errs > 0){
@@ -298,6 +343,11 @@ static void end_phase(const char * name, phase_stat_t * p){
   // reduce timers
   ret = MPI_Reduce(& p->t, & g_stat.t, 2, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
+  if(o.rank == 0) {
+    g_stat.t_all = (double*) malloc(sizeof(double) * o.size);
+  }
+  ret = MPI_Gather(& p->t, 1, MPI_DOUBLE, g_stat.t_all, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  CHECK_MPI_RET(ret)
   ret = MPI_Reduce(& p->dset_name, & g_stat.dset_name, 2*(3+5), MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
   ret = MPI_Reduce(& p->max_op_time, & g_stat.max_op_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
@@ -340,7 +390,9 @@ static void end_phase(const char * name, phase_stat_t * p){
       store_histogram("delete", p->time_delete, p->repeats);
     }
   }
-
+  if(g_stat.t_all){
+    free(g_stat.t_all);
+  }
   if (p->time_create){
     free(p->time_create);
     free(p->time_read);

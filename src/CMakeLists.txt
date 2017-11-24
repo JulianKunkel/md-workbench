@@ -2,7 +2,7 @@ add_definitions("-DGIT_COMMIT_HASH=${GIT_COMMIT_HASH}")
 add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
 
 add_executable(md-real-io option.c memory.c md_util.c md-real-io.c ${PLUGINS})
-target_link_libraries(md-real-io PRIVATE ${MPI_LIBRARIES} ${MONGOC_LIBRARIES} ${LIBPQ_LIBRARIES} ${LIBS3_LIBRARIES})
+target_link_libraries(md-real-io PRIVATE ${MPI_LIBRARIES} ${MONGOC_LIBRARIES} ${LIBPQ_LIBRARIES} ${LIBS3_LIBRARIES} -lm)
 
 set_target_properties(md-real-io PROPERTIES INSTALL_RPATH  ${MONGOC_LIBDIR}:${MPI_LIBDIR}:${LIBPQ_LIBDIR}:${LIBS3_LIBDIR})
 set_target_properties(md-real-io PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
