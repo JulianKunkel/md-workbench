@@ -262,22 +262,9 @@ int parseOptions(int argc, char ** argv, option_help * args, int * printhelp){
           case (OPTION_REQUIRED_ARGUMENT):{
             // check if next is an argument
             if(arg == NULL){
-              char str_s[1024] = "";
-              if(o->shortVar){
-                strcat(str_s, "-");
-                strncat(str_s, & o->shortVar, 1);
-                strcat(str_s, " ");
-              }
-              if(o->longVar){
-                strcat(str_s, "(--");
-                strcat(str_s, o->longVar);
-                strcat(str_s, ") ");
-              }
-
-              if (rank == 0)
-                printf("Error option %srequires an argument.\n", str_s);
-              error = 1;
-              break;
+              // simply take the next value as argument
+              i++;
+              arg = argv[i];
             }
 
             switch(o->type){
