@@ -120,7 +120,7 @@ typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   // the maximum time for any single operation
   double max_op_time;
   timer phase_start_timer;
-  int stonewall_hit;
+  int stonewall_iterations;
 } phase_stat_t;
 
 #define CHECK_MPI_RET(ret) if (ret != MPI_SUCCESS){ printf("Unexpected error in MPI on Line %d\n", __LINE__);}
@@ -340,8 +340,8 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
         pos += sprintf(buff + pos, ")" );
       }
     }
-    if(! o.quiet_output && p->stonewall_hit){
-      pos += sprintf(buff + pos, " stonewall-iter:%zu", p->repeats);
+    if(! o.quiet_output && p->stonewall_iterations){
+      pos += sprintf(buff + pos, " stonewall-iter:%d", p->stonewall_iterations);
     }
 
     if(p->stats_read.max > 1e-9){
@@ -456,10 +456,10 @@ static void end_phase(const char * name, phase_stat_t * p){
   CHECK_MPI_RET(ret)
   ret = MPI_Reduce(& p->max_op_time, & g_stat.max_op_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   CHECK_MPI_RET(ret)
-  if( p->stonewall_hit ){
+  if( p->stonewall_iterations ){
     ret = MPI_Reduce(& p->repeats, & g_stat.repeats, 1, MPI_UINT64_T, MPI_MIN, 0, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
-    g_stat.stonewall_hit = 1;
+    g_stat.stonewall_iterations = p->stonewall_iterations;
   }
 
   if(strcmp(name,"precreate") == 0){
@@ -756,16 +756,21 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       if(o.verbosity){
         printf("%d: stonewall runtime %fs (%ds)\n", o.rank, bench_runtime, o.stonewall_timer);
       }
-      s->stonewall_hit = 1;
       if(! o.stonewall_timer_wear_out){
+        s->stonewall_iterations = f;
         break;
       }
       armed_stone_wall = 0;
       // wear out mode, now reduce the maximum
-      int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+      int cur_pos = f + 1;
+      int ret = MPI_Allreduce(& cur_pos, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
       CHECK_MPI_RET(ret)
+      s->stonewall_iterations = total_num;
       if(o.rank == 0){
         printf("stonewall wear out %fs (%d iter)\n", bench_runtime, total_num);
+      }
+      if(f == total_num){
+        break;
       }
     }
   }
@@ -773,11 +778,12 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
     int f = total_num;
     int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
-    s->stonewall_hit = 1;
+    s->stonewall_iterations = total_num;
   }
   if(o.stonewall_timer && ! o.stonewall_timer_wear_out){
-    int sh = s->stonewall_hit;
-    int ret = MPI_Allreduce(& sh, & s->stonewall_hit, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+    // TODO FIXME
+    int sh = s->stonewall_iterations;
+    int ret = MPI_Allreduce(& sh, & s->stonewall_iterations, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     CHECK_MPI_RET(ret)
   }
 
