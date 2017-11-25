@@ -347,13 +347,16 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     if(p->stats_read.max > 1e-9){
       time_statistics_t stat = p->stats_read;
       pos += sprintf(buff + pos, " read(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
-    }else if(p->stats_stat.max > 1e-9){
+    }
+    if(p->stats_stat.max > 1e-9){
       time_statistics_t stat = p->stats_stat;
       pos += sprintf(buff + pos, " stat(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
-    }else if(p->stats_create.max > 1e-9){
+    }
+    if(p->stats_create.max > 1e-9){
       time_statistics_t  stat = p->stats_create;
       pos += sprintf(buff + pos, " create(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
-    }else if(p->stats_delete.max > 1e-9){
+    }
+    if(p->stats_delete.max > 1e-9){
       time_statistics_t stat = p->stats_delete;
       pos += sprintf(buff + pos, " delete(%.4es, %.4es, %.4es, %.4es, %.4es, %.4es, %.4es)", stat.min, stat.q1, stat.median, stat.q3, stat.q90, stat.q99, stat.max);
     }
