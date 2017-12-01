@@ -432,7 +432,6 @@ static void end_phase(const char * name, phase_stat_t * p){
   char buff[4096];
 
   char * limit_memory_P = NULL;
-  p->t = stop_timer(p->phase_start_timer);
   MPI_Barrier(MPI_COMM_WORLD);
   p->t_incl_barrier = stop_timer(p->phase_start_timer);
 
@@ -635,6 +634,7 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
   int total_num = o.num;
   int armed_stone_wall = (o.stonewall_timer > 0);
   int f;
+  double phase_allreduce_time = 0;
 
   for(f=0; f < total_num; f++){
     float bench_runtime = 0; // the time since start
@@ -763,7 +763,9 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       armed_stone_wall = 0;
       // wear out mode, now reduce the maximum
       int cur_pos = f + 1;
+      phase_allreduce_time = stop_timer(s->phase_start_timer);
       int ret = MPI_Allreduce(& cur_pos, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+      start_timer(& s->phase_start_timer);
       CHECK_MPI_RET(ret)
       s->stonewall_iterations = total_num;
       if(o.rank == 0){
@@ -774,6 +776,7 @@ void run_benchmark(phase_stat_t * s, int * current_index_p){
       }
     }
   }
+  s->t = stop_timer(s->phase_start_timer) + phase_allreduce_time;
   if(armed_stone_wall && o.stonewall_timer_wear_out){
     int f = total_num;
     int ret = MPI_Allreduce(& f, & total_num, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
@@ -1046,6 +1049,7 @@ int main(int argc, char ** argv){
     // pre-creation phase
     start_timer(& phase_stats.phase_start_timer);
     run_precreate(& phase_stats);
+    phase_stats.t = stop_timer(phase_stats.phase_start_timer);
     end_phase("precreate", & phase_stats);
   }
 
@@ -1080,6 +1084,7 @@ int main(int argc, char ** argv){
     init_stats(& phase_stats, o.precreate * o.dset_count);
     start_timer(& phase_stats.phase_start_timer);
     run_cleanup(& phase_stats, current_index);
+    phase_stats.t = stop_timer(phase_stats.phase_start_timer);
     end_phase("cleanup", & phase_stats);
 
     if (o.rank == 0){
