@@ -92,7 +92,6 @@ typedef struct{
 // statistics for running a single phase
 typedef struct{ // NOTE: if this type is changed, adjust end_phase() !!!
   double t; // maximum time
-  double t_incl_barrier;
   double * t_all;
 
   op_stat_t dset_name;
@@ -433,7 +432,6 @@ static void end_phase(const char * name, phase_stat_t * p){
 
   char * limit_memory_P = NULL;
   MPI_Barrier(MPI_COMM_WORLD);
-  p->t_incl_barrier = stop_timer(p->phase_start_timer);
 
   int max_repeats = o.precreate * o.dset_count;
   if(strcmp(name,"benchmark") == 0){
@@ -503,7 +501,7 @@ static void end_phase(const char * name, phase_stat_t * p){
 
   if (o.rank == 0){
     //print the stats:
-    print_p_stat(buff, name, & g_stat, g_stat.t_incl_barrier);
+    print_p_stat(buff, name, & g_stat, g_stat.t);
     printf("%s\n", buff);
   }
 
