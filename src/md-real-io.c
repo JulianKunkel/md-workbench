@@ -296,7 +296,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
 
     switch(name[0]){
       case('b'):
-        pos += sprintf(buff + pos, "rate:%.1f iops/s objects:%d rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
+        pos += sprintf(buff + pos, "rate:%.1f iops/s objects:%d rate:%.1f obj/s tp:%.1f MiB/s op-max:%.4es",
           p->obj_read.suc * ioops_per_iter / t, // write, stat, read, delete
           p->obj_read.suc,
           p->obj_read.suc / t,
@@ -308,7 +308,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
         }
         break;
       case('p'):
-        pos += sprintf(buff + pos, "rate:%.1f iops/s dsets: %d objects:%d rate:%.3f dset/s rate:%.1f obj/s tp:%.1f Mib/s op-max:%.4es",
+        pos += sprintf(buff + pos, "rate:%.1f iops/s dsets: %d objects:%d rate:%.3f dset/s rate:%.1f obj/s tp:%.1f MiB/s op-max:%.4es",
           (p->dset_create.suc + p->obj_create.suc) / t,
           p->dset_create.suc,
           p->obj_create.suc,
