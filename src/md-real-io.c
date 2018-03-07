@@ -260,7 +260,7 @@ static void statistics_minmax(int count, double * arr, double * out_min, double 
   *out_max = max;
 }
 
-static void print_p_stat(char * buff, const char * name, phase_stat_t * p, double t){
+static void print_p_stat(char * buff, const char * name, phase_stat_t * p, double t, int print_global){
   const double tp = (double)(p->obj_create.suc + p->obj_read.suc) * o.file_size / t / 1024 / 1024;
 
   const int errs = sum_err(p);
@@ -286,7 +286,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
     int pos = 0;
     // single line
     pos += sprintf(buff, "%s process max:%.1fs ", name, t);
-    if(o.rank == 0){
+    if(print_global){
       pos += sprintf(buff + pos, "min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
     }
     int ioops_per_iter = 4;
@@ -394,22 +394,20 @@ static uint64_t aggregate_timers(int repeats, int max_repeats, time_result_t * t
   return count;
 }
 
-static void compute_histogram(const char * name, time_result_t * times, time_statistics_t * stats, size_t repeats){
-  if(o.rank == 0 || o.latency_keep_all){
-    if(o.latency_file_prefix){
-      char file[1024];
-      sprintf(file, "%s-%.2f-%d-%s-%d.csv", o.latency_file_prefix, o.relative_waiting_factor, global_iteration, name, o.rank);
-      FILE * f = fopen(file, "w+");
-      if(f == NULL){
-        printf("%d: Error writing to latency file: %s\n", o.rank, file);
-        return;
-      }
-      fprintf(f, "time,runtime\n");
-      for(size_t i = 0; i < repeats; i++){
-        fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
-      }
-      fclose(f);
+static void compute_histogram(const char * name, time_result_t * times, time_statistics_t * stats, size_t repeats, int writeLatencyFile){
+  if(writeLatencyFile && o.latency_file_prefix ){
+    char file[1024];
+    sprintf(file, "%s-%.2f-%d-%s.csv", o.latency_file_prefix, o.relative_waiting_factor, global_iteration, name);
+    FILE * f = fopen(file, "w+");
+    if(f == NULL){
+      printf("%d: Error writing to latency file: %s\n", o.rank, file);
+      return;
     }
+    fprintf(f, "time,runtime\n");
+    for(size_t i = 0; i < repeats; i++){
+      fprintf(f, "%.7f,%.4e\n", times[i].time_since_app_start, times[i].runtime);
+    }
+    fclose(f);
   }
   // now sort the times and pick the quantiles
   qsort(times, repeats, sizeof(time_result_t), (int (*)(const void *, const void *)) compare_floats);
@@ -458,63 +456,64 @@ static void end_phase(const char * name, phase_stat_t * p){
     CHECK_MPI_RET(ret)
     g_stat.stonewall_iterations = p->stonewall_iterations;
   }
+  int write_rank0_latency_file = (o.rank == 0) && ! o.latency_keep_all;
 
   if(strcmp(name,"precreate") == 0){
     uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_create, g_stat.time_create);
-    if(o.rank == 0) {
-      compute_histogram("precreate-all", g_stat.time_create, & g_stat.stats_create, repeats);
+    if(o.rank == 0){
+      compute_histogram("precreate-all", g_stat.time_create, & g_stat.stats_create, repeats, o.latency_keep_all);
     }
-    compute_histogram("precreate", p->time_create, & p->stats_create, p->repeats);
+    compute_histogram("precreate", p->time_create, & p->stats_create, p->repeats, write_rank0_latency_file);
   }else if(strcmp(name,"cleanup") == 0){
     uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_delete, g_stat.time_delete);
     if(o.rank == 0) {
-      compute_histogram("cleanup-all", g_stat.time_delete, & g_stat.stats_delete, repeats);
+      compute_histogram("cleanup-all", g_stat.time_delete, & g_stat.stats_delete, repeats, o.latency_keep_all);
     }
-    compute_histogram("cleanup", p->time_delete, & p->stats_delete, p->repeats);
+    compute_histogram("cleanup", p->time_delete, & p->stats_delete, p->repeats, write_rank0_latency_file);
   }else if(strcmp(name,"benchmark") == 0){
     uint64_t repeats = aggregate_timers(p->repeats, max_repeats, p->time_read, g_stat.time_read);
     if(o.rank == 0) {
-      compute_histogram("read-all", g_stat.time_read, & g_stat.stats_read, repeats);
+      compute_histogram("read-all", g_stat.time_read, & g_stat.stats_read, repeats, o.latency_keep_all);
     }
-    compute_histogram("read", p->time_read, & p->stats_read, p->repeats);
+    compute_histogram("read", p->time_read, & p->stats_read, p->repeats, write_rank0_latency_file);
 
     repeats = aggregate_timers(p->repeats, max_repeats, p->time_stat, g_stat.time_stat);
     if(o.rank == 0) {
-      compute_histogram("stat-all", g_stat.time_stat, & g_stat.stats_stat, repeats);
+      compute_histogram("stat-all", g_stat.time_stat, & g_stat.stats_stat, repeats, o.latency_keep_all);
     }
-    compute_histogram("stat", p->time_stat, & p->stats_stat, p->repeats);
+    compute_histogram("stat", p->time_stat, & p->stats_stat, p->repeats, write_rank0_latency_file);
 
     if(! o.read_only){
       repeats = aggregate_timers(p->repeats, max_repeats, p->time_create, g_stat.time_create);
       if(o.rank == 0) {
-        compute_histogram("create-all", g_stat.time_create, & g_stat.stats_create, repeats);
+        compute_histogram("create-all", g_stat.time_create, & g_stat.stats_create, repeats, o.latency_keep_all);
       }
-      compute_histogram("create", p->time_create, & p->stats_create, p->repeats);
+      compute_histogram("create", p->time_create, & p->stats_create, p->repeats, write_rank0_latency_file);
 
       repeats = aggregate_timers(p->repeats, max_repeats, p->time_delete, g_stat.time_delete);
       if(o.rank == 0) {
-        compute_histogram("delete-all", g_stat.time_delete, & g_stat.stats_delete, repeats);
+        compute_histogram("delete-all", g_stat.time_delete, & g_stat.stats_delete, repeats, o.latency_keep_all);
       }
-      compute_histogram("delete", p->time_delete, & p->stats_delete, p->repeats);
+      compute_histogram("delete", p->time_delete, & p->stats_delete, p->repeats, write_rank0_latency_file);
     }
   }
 
   if (o.rank == 0){
     //print the stats:
-    print_p_stat(buff, name, & g_stat, g_stat.t);
+    print_p_stat(buff, name, & g_stat, g_stat.t, 1);
     printf("%s\n", buff);
   }
 
   if(o.process_report){
     if(o.rank == 0){
-      print_p_stat(buff, name, p, p->t);
+      print_p_stat(buff, name, p, p->t, 0);
       printf("0: %s\n", buff);
       for(int i=1; i < o.size; i++){
         MPI_Recv(buff, 4096, MPI_CHAR, i, 4711, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         printf("%d: %s\n", i, buff);
       }
     }else{
-      print_p_stat(buff, name, p, p->t);
+      print_p_stat(buff, name, p, p->t, 0);
       MPI_Send(buff, 4096, MPI_CHAR, 0, 4711, MPI_COMM_WORLD);
     }
   }
