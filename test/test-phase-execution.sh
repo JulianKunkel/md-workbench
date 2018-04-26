@@ -6,7 +6,7 @@
 ARGS="-w=10 -W -O=1 -I=2000 -D=2 -P=10000 -R=3 --process-reports -L=/tmp/1 -S=3901 --latency-all --run-info-file=mdreal-status"
 
 PLUGIN_ARGS="-- -D=md-testdir"
-RUN="mpiexec -n 2 ../build/src/md-real-io"
+RUN="mpiexec -n 2 ../build/src/md-workbench"
 
 $RUN $ARGS -1 $PLUGIN_ARGS
 $RUN $ARGS -2 $PLUGIN_ARGS

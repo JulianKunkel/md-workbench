@@ -10,29 +10,29 @@ fi
 
 echo "Building docker containers"
 
-docker build -t kunkel/md-real-io:ubuntu14.04 ubuntu14.04
+docker build -t kunkel/md-workbench:ubuntu14.04 ubuntu14.04
 if [ $? != 0 ] ; then
 	echo "Error building image"
 	exit 1
 fi
-docker build -t kunkel/md-real-io:ubuntu16.04 ubuntu16.04
-if [ $? != 0 ] ; then
-	echo "Error building image"
-	exit 1
-fi
-
-docker build -t kunkel/md-real-io:ubuntu17.04 ubuntu17.04 
+docker build -t kunkel/md-workbench:ubuntu16.04 ubuntu16.04
 if [ $? != 0 ] ; then
 	echo "Error building image"
 	exit 1
 fi
 
-docker build -t kunkel/md-real-io:centos6 centos6
+docker build -t kunkel/md-workbench:ubuntu17.04 ubuntu17.04 
 if [ $? != 0 ] ; then
 	echo "Error building image"
 	exit 1
 fi
-docker build -t kunkel/md-real-io:centos7 centos7
+
+docker build -t kunkel/md-workbench:centos6 centos6
+if [ $? != 0 ] ; then
+	echo "Error building image"
+	exit 1
+fi
+docker build -t kunkel/md-workbench:centos7 centos7
 if [ $? != 0 ] ; then
 	echo "Error building image"
 	exit 1

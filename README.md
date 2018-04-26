@@ -1,7 +1,7 @@
-# MD-REAL-IO [![Build Status](https://travis-ci.org/JulianKunkel/md-real-io.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-real-io)
+# MD-Workbench [![Build Status](https://travis-ci.org/JulianKunkel/md-real-io.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-real-io)
 *****
 
-The MD-REAL-IO benchmark is an MPI-parallel benchmark to measure metadata (together with small object) performance.
+The MD-Workbench benchmark is an MPI-parallel benchmark to measure metadata (together with small object) performance.
 It aims to simulate actual user activities on a file system such as compilation.
 In contrast to mdtest, it produces access patterns that are not easily cacheable and optimizable by existing (parallel) file systems.
 Therefore, it results in much less performance than mdtest (10k IOPS vs. 100k IOPS with mdtest).
@@ -60,7 +60,7 @@ The output of two processes and an invocation without argumentsis as follows (co
 
         #First, information about the run is provided
         Args: ./build/src/md-real-io        
-        MD-REAL-IO total objects: 120000 workingset size: 223.217 MiB (version: 4e8e263@master) time: 2018-03-07 12:13:29
+        MD-Workbench total objects: 120000 workingset size: 223.217 MiB (version: 4e8e263@master) time: 2018-03-07 12:13:29
         #Total objects: How many objects in total are created/read/written during the whole run
         #Workingset size: that is the amount of data that is created and used for the benchmark, typically you may want to pick a size that fits or exceeds cache on purpose
         #Version: The git revision of the code
