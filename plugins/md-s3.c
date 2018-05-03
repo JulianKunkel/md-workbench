@@ -34,6 +34,9 @@ static char * bucket_prefix = "mdrealio";
 static char * locationConstraint = NULL;
 
 static int dont_suffix = 0;
+static int s3_compatible = 0;
+static int use_ssl = 0;
+static S3Protocol s3_protocol = S3ProtocolHTTP;
 
 static S3BucketContext bucket_context = {NULL};
 
@@ -41,6 +44,8 @@ static option_help options [] = {
   {'b', "bucket-per-set", "Use one bucket to map a set, otherwise only one bucket is used.", OPTION_FLAG, 'd', & bucket_per_set},
   {'B', "bucket-name-prefix", "The name of the bucket (when using without -b), otherwise it is used as prefix.", OPTION_OPTIONAL_ARGUMENT, 's', & bucket_prefix},
   {'p', "dont-suffix-bucket", "If not selected, then a hash will be added to the bucket name to increase uniqueness.", OPTION_FLAG, 'd', & dont_suffix },
+  {'c', "s3-compatible", "to be selected when using S3 compatible storage", OPTION_FLAG, 'd', & s3_compatible },
+  {'l', "use-ssl", "used to specify that SSL is needed for the connection", OPTION_FLAG, 'd', & use_ssl },
   {'H', "host", "The host optionally followed by:port.", OPTION_OPTIONAL_ARGUMENT, 's', & host},
   {'s', "secret-key", "The secret key.", OPTION_REQUIRED_ARGUMENT, 'H', & secret_key},
   {'a', "access-key", "The access key.", OPTION_REQUIRED_ARGUMENT, 'H', & access_key},
@@ -50,7 +55,6 @@ static option_help options [] = {
 static option_help * get_options(){
   return options;
 }
-
 
 
 static int initialize(){
@@ -73,7 +77,10 @@ static int initialize(){
   memset(&bucket_context, 0, sizeof(bucket_context));
   bucket_context.hostName = host;
   bucket_context.bucketName = bucket_prefix;
-  bucket_context.protocol = S3ProtocolHTTP;
+  if (use_ssl){
+    s3_protocol = S3ProtocolHTTPS;
+  }
+  bucket_context.protocol = s3_protocol;
   bucket_context.uriStyle = S3UriStylePath;
   bucket_context.accessKeyId = access_key;
   bucket_context.secretAccessKey = secret_key;
@@ -134,15 +141,19 @@ static void responseCompleteCallback(S3Status status, const S3ErrorDetails *erro
 static S3ResponseHandler responseHandler = {  &responsePropertiesCallback, &responseCompleteCallback };
 
 static int prepare_global(){
+  if (use_ssl){
+    s3_protocol = S3ProtocolHTTPS;
+  }
+    
   if (! bucket_per_set){
     // check if the bucket exists, otherwise create it
 
-    S3_test_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    S3_test_bucket(s3_protocol, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
     if (s3status != S3StatusErrorNoSuchBucket){
        printf("Error, the bucket %s already exists\n", bucket_prefix);
        return MD_ERROR_UNKNOWN;
     }
-    S3_create_bucket(S3ProtocolHTTP, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    S3_create_bucket(s3_protocol, access_key, secret_key, NULL, bucket_prefix, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
     CHECK_ERROR
     return MD_SUCCESS;
   }
@@ -151,8 +162,11 @@ static int prepare_global(){
 }
 
 static int purge_global(){
+  if (use_ssl){
+    s3_protocol = S3ProtocolHTTPS;
+  } 
   if (! bucket_per_set){
-    S3_delete_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, NULL,  & responseHandler, NULL);
+    S3_delete_bucket(s3_protocol, S3UriStylePath, access_key, secret_key, NULL, bucket_prefix, NULL,  & responseHandler, NULL);
     CHECK_ERROR
     return MD_SUCCESS;
   }
@@ -161,8 +175,11 @@ static int purge_global(){
 
 
 static int create_dset(char * name){
+  if (use_ssl){
+    s3_protocol = S3ProtocolHTTPS;
+  }
   if (bucket_per_set){
-    S3_create_bucket(S3ProtocolHTTP, access_key, secret_key, NULL, name, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
+    S3_create_bucket(s3_protocol, access_key, secret_key, NULL, name, S3CannedAclPrivate, locationConstraint, NULL,  & responseHandler, NULL);
     CHECK_ERROR
     return MD_SUCCESS;
   }else{
@@ -171,8 +188,11 @@ static int create_dset(char * name){
 }
 
 static int rm_dset(char * name){
-  if (bucket_per_set){
-    S3_delete_bucket(S3ProtocolHTTP, S3UriStylePath, access_key, secret_key, NULL, name, NULL,  & responseHandler, NULL);
+    if (use_ssl){
+    s3_protocol = S3ProtocolHTTPS;
+  }
+    if (bucket_per_set){
+    S3_delete_bucket(s3_protocol, S3UriStylePath, access_key, secret_key, NULL, name, NULL,  & responseHandler, NULL);
     CHECK_ERROR
     return MD_SUCCESS;
   }else{
@@ -212,8 +232,10 @@ static int write_obj(char * bucket_name, char * obj_name, char * buf, size_t obj
   struct data_handling dh = { .buf = buf, .size = obj_size };
   S3BucketContext * bucket = getBucket(bucket_name);
   S3_put_object(bucket, obj_name, obj_size, NULL, NULL, &putObjectHandler, & dh);
-  CHECK_ERROR
-
+  
+    if (! s3_compatible){
+    CHECK_ERROR
+   }
   return MD_SUCCESS;
 }
 
