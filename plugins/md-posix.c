@@ -105,14 +105,27 @@ static int rm_dset(char * filename){
 }
 
 static int write_obj(char * dirname, char * filename, char * buf, size_t file_size){
-  int ret;
+  ssize_t ret;
   int fd;
   fd = open(filename, O_CREAT | O_TRUNC | O_RDWR, 0644);
   if (fd == -1) return MD_ERROR_CREATE;
-  ret = write(fd, buf, file_size);
-  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
+
+  while(file_size > 0){
+    ret = write(fd, buf, file_size);
+    if (ret == -1){
+      if (errno == EAGAIN){
+        continue;
+      }
+      printf("Error: %s\n", strerror(errno));
+      fflush(stdout);
+      close(fd);
+      return MD_ERROR_UNKNOWN;
+    }
+    file_size -= ret;
+    buf += ret;
+  }
   close(fd);
-  return ret;
+  return MD_SUCCESS;
 }
 
 
@@ -121,10 +134,23 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
   int ret;
   fd = open(filename, O_RDWR);
   if (fd == -1) return MD_ERROR_FIND;
-  ret = read(fd, buf, file_size);
-  ret = ( (size_t) ret == file_size) ? MD_SUCCESS: MD_ERROR_UNKNOWN;
+
+  while(file_size > 0){
+    ret = read(fd, buf, file_size);
+    if (ret == -1){
+      if (errno == EAGAIN){
+        continue;
+      }
+      printf("Error: %s\n", strerror(errno));
+      fflush(stdout);
+      close(fd);
+      return MD_ERROR_UNKNOWN;
+    }
+    file_size -= ret;
+    buf += ret;
+  }
   close(fd);
-  return ret;
+  return MD_SUCCESS;
 }
 
 static int stat_obj(char * dirname, char * filename, size_t file_size){
