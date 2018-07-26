@@ -588,6 +588,7 @@ void run_precreate(phase_stat_t * s){
         s->dset_name.err++;
         if (! o.ignore_precreate_errors){
           printf("%d: Error while creating the obj name\n", o.rank);
+          fflush(stdout);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
         s->obj_name.err++;
@@ -610,6 +611,7 @@ void run_precreate(phase_stat_t * s){
         s->obj_create.err++;
         if (! o.ignore_precreate_errors){
           printf("%d: Error while creating the obj: %s\n", o.rank, obj_name);
+          fflush(stdout);
           MPI_Abort(MPI_COMM_WORLD, 1);
         }
       }
@@ -1036,8 +1038,10 @@ int main(int argc, char ** argv){
     if (o.rank == 0){
       ret = o.plugin->prepare_global();
       if ( ret != MD_SUCCESS && ret != MD_NOOP ){
-        printf("Rank 0 could not prepare the run, aborting\n");
-        MPI_Abort(MPI_COMM_WORLD, 1);
+        if ( ! (ret == MD_EXISTS && o.ignore_precreate_errors)){
+          printf("Rank 0 could not prepare the run, aborting\n");
+          MPI_Abort(MPI_COMM_WORLD, 1);
+        }
       }
     }
     init_stats(& phase_stats, o.precreate * o.dset_count);

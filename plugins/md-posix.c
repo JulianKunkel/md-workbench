@@ -67,8 +67,8 @@ static int prepare_global(){
       return MD_SUCCESS;
     }
     err:
-    printf("ERROR: Could not create the directory: %s; error: %s\n", dir, strerror(errno));
-    return MD_ERROR_UNKNOWN;
+      printf("ERROR: Could not create the directory: %s; error: %s\n", dir, strerror(errno));
+      return MD_EXISTS;
   }
   created_root_dir = 1;
   return MD_SUCCESS;

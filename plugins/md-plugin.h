@@ -55,6 +55,7 @@ struct md_plugin{
 enum MD_ERROR{
   MD_ERROR_UNKNOWN = -1,
   MD_SUCCESS = 0,
+  MD_EXISTS = 1,
   MD_ERROR_CREATE,
   MD_ERROR_FIND,
   MD_NOOP, // this is returned, if the implementation doesn't do anything
