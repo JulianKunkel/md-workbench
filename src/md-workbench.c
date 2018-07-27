@@ -165,6 +165,8 @@ struct benchmark_options{
 
   float relative_waiting_factor;
   int adaptive_waiting_mode;
+
+  uint64_t start_item_number;
 };
 
 static int global_iteration = 0;
@@ -542,7 +544,7 @@ static void end_phase(const char * name, phase_stat_t * p){
   mem_free_preallocated(& limit_memory_P);
 }
 
-void run_precreate(phase_stat_t * s){
+void run_precreate(phase_stat_t * s, int current_index){
   char dset[4096];
   char obj_name[4096];
   int ret;
@@ -579,7 +581,7 @@ void run_precreate(phase_stat_t * s){
   double op_time;
 
   // create the obj
-  for(int f=0; f < o.precreate; f++){
+  for(int f=current_index; f < o.precreate; f++){
     for(int d=0; d < o.dset_count; d++){
       ret = o.plugin->def_dset_name(dset, o.rank, d);
       pos++;
@@ -863,6 +865,7 @@ static option_help options [] = {
   {'3', "run-cleanup", "Run cleanup phase (only run explicit phases)", OPTION_FLAG, 'd', & o.phase_cleanup},
   {'w', "stonewall-timer", "Stop each benchmark iteration after the specified seconds (if not used with -W this leads to process-specific progress!)", OPTION_OPTIONAL_ARGUMENT, 'd', & o.stonewall_timer},
   {'W', "stonewall-wear-out", "Stop with stonewall after specified time and use a soft wear-out phase -- all processes perform the same number of iterations", OPTION_FLAG, 'd', & o.stonewall_timer_wear_out},
+  {0, "start-item", "The iteration number of the item to start with, allowing to offset the operations", OPTION_OPTIONAL_ARGUMENT, 'l', & o.start_item_number},
   {0, "print-detailed-stats", "Print detailed machine parsable statistics.", OPTION_FLAG, 'd', & o.print_detailed_stats},
   {0, "read-only", "Run read-only during benchmarking phase (no deletes/writes), probably use with -2", OPTION_FLAG, 'd', & o.read_only},
   {0, "ignore-precreate-errors", "Ignore errors occuring during the pre-creation phase", OPTION_FLAG, 'd', & o.ignore_precreate_errors},
@@ -996,9 +999,15 @@ int main(int argc, char ** argv){
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  int current_index = 0;
+  int current_index;
+
   if ( (o.phase_cleanup || o.phase_benchmark) && ! o.phase_precreate ){
     current_index = return_position();
+  }
+
+  if(o.start_item_number){
+    printf("Using start position %lld\n", (long long) o.start_item_number);
+    current_index = o.start_item_number;
   }
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
@@ -1049,7 +1058,7 @@ int main(int argc, char ** argv){
 
     // pre-creation phase
     start_timer(& phase_stats.phase_start_timer);
-    run_precreate(& phase_stats);
+    run_precreate(& phase_stats, current_index);
     phase_stats.t = stop_timer(phase_stats.phase_start_timer);
     end_phase("precreate", & phase_stats);
   }
