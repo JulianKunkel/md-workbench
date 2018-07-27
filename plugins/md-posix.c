@@ -23,6 +23,7 @@
 #include <string.h>
 #include <errno.h>
 #include <dirent.h>
+#include <assert.h>
 
 #include <plugins/md-posix.h>
 
