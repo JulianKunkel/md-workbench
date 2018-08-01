@@ -147,6 +147,9 @@ static int read_obj(char * dirname, char * filename, char * buf, size_t file_siz
       close(fd);
       return MD_ERROR_UNKNOWN;
     }
+    if(ret == 0){
+      return MD_ERROR_UNKNOWN;
+    }
     file_size -= ret;
     buf += ret;
   }
