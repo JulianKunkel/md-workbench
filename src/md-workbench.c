@@ -287,7 +287,7 @@ static void print_p_stat(char * buff, const char * name, phase_stat_t * p, doubl
   }else{
     int pos = 0;
     // single line
-    pos += sprintf(buff, "%s process max:%.1fs ", name, t);
+    pos += sprintf(buff, "%s process max:%.2fs ", name, t);
     if(print_global){
       pos += sprintf(buff + pos, "min:%.1fs mean: %.1fs balance:%.1f stddev:%.1f ", r_min, r_mean, r_min/r_max * 100.0, r_std);
     }
