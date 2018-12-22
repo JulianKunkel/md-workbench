@@ -1,4 +1,4 @@
-# MD-Workbench [![Build Status](https://travis-ci.org/JulianKunkel/md-real-io.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-real-io)
+# MD-Workbench [![Build Status](https://travis-ci.org/JulianKunkel/md-workbench.svg?branch=master)](https://travis-ci.org/JulianKunkel/md-workbench)
 *****
 
 The MD-Workbench benchmark is an MPI-parallel benchmark to measure metadata (together with small object) performance.
@@ -28,15 +28,15 @@ The test/docker/<SYSTEM> directory contains information how to setup the require
 
 To see the available options run:
 
-                $ ./md-real-io -h
+                $ ./md-workbench -h
 
 ### Example
 
 To run with a single process and defaults parameters that should run quickly just invoke
-                $ md-real-io
+                $ md-workbench
 
 To set parameters and run with 10 processes:
-                $ mpiexec -n 10 ./md-real-io -i=posix -P=10 -D=5 -I=3 -S=3901
+                $ mpiexec -n 10 ./md-workbench -i=posix -P=10 -D=5 -I=3 -S=3901
 
 The later example runs in three phases, in more detail the following takes place:
    1. Precreate: each process creates 10 files in 5 directories.
@@ -46,9 +46,9 @@ The later example runs in three phases, in more detail the following takes place
 
 ## Testing ##
 
-* Build / unit testing is done using travis: https://travis-ci.org/JulianKunkel/md-real-io
+* Build / unit testing is done using travis: https://travis-ci.org/JulianKunkel/md-workbench
 * CTest ist used for testing, just run "make test" or "ctest"
-  * Results are pushed to: my.cdash.org/index.php?project=md-real-io by using "ctest -D Experimental"
+  * Results are pushed to: my.cdash.org/index.php?project=md-workbench by using "ctest -D Experimental"
 
 
 # Analysis
@@ -56,10 +56,10 @@ The later example runs in three phases, in more detail the following takes place
 
 By default, the benchmark outputs aggregated results for all processes.
 
-The output of two processes and an invocation without argumentsis as follows (comments are inline and marked with #):
+The output of two processes and an invocation without arguments is as follows (comments are inline and marked with #):
 
         #First, information about the run is provided
-        Args: ./build/src/md-real-io        
+        Args: ./build/src/md-workbench        
         MD-Workbench total objects: 120000 workingset size: 223.217 MiB (version: 4e8e263@master) time: 2018-03-07 12:13:29
         #Total objects: How many objects in total are created/read/written during the whole run
         #Workingset size: that is the amount of data that is created and used for the benchmark, typically you may want to pick a size that fits or exceeds cache on purpose
@@ -133,7 +133,7 @@ Here, the benchmark line gives the aggregated results (as before), while the ran
 ## Analyzing individual operations
 
 While the benchmark measures the timing for each I/O individually, this information is only output if requested with the **-L** argument:
-        $ mpiexec -n 2 ./build/src/md-real-io -L=latency
+        $ mpiexec -n 2 ./build/src/md-workbench -L=latency
 
 This writes the measured timings for each I/O and phase to files with the prefix latency, for example, the file **latency-0.00-0-create.csv** is created for the first benchmarking iteration.
 The CSV format is simple:
