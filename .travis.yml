@@ -46,15 +46,15 @@ matrix:
       env:
         - MPI=/usr/lib/openmpi/include
         - COMPILER=gcc-6
-    - compiler: gcc-4.8-openmpi
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - gcc-4.8
-            - openmpi-bin
-            - libopenmpi-dev
-      env:
-        - MPI=/usr/lib/openmpi/include
-        - COMPILER=gcc-4.8
+#    - compiler: gcc-4.8-openmpi
+#      addons:
+#        apt:
+#          sources:
+#            - ubuntu-toolchain-r-test
+#          packages:
+#            - gcc-4.8
+#            - openmpi-bin
+#            - libopenmpi-dev
+#      env:
+#        - MPI=/usr/lib/openmpi/include
+#        - COMPILER=gcc-4.8
