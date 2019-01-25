@@ -917,21 +917,27 @@ static void printTime(){
 
 static int return_position(){
   int position, ret;
-  FILE * f = fopen(o.run_info_file, "r");
-  if(! f){
-    printf("[ERROR] Could not open %s for restart\n", o.run_info_file);
-    exit(1);
+  if( o.rank == 0){
+    FILE * f = fopen(o.run_info_file, "r");
+    if(! f){
+      printf("[ERROR] Could not open %s for restart\n", o.run_info_file);
+      exit(1);
+    }
+    ret = fscanf(f, "pos: %d", & position);
+    if (ret != 1){
+      printf("Could not read from %s for restart\n", o.run_info_file);
+      exit(1);
+    }
+    fclose(f);
   }
-  ret = fscanf(f, "pos: %d", & position);
-  if (ret != 1){
-    printf("Could not read from %s for restart\n", o.run_info_file);
-    exit(1);
-  }
-  fclose(f);
+  ret = MPI_Bcast( & position, 1, MPI_INT, 0, MPI_COMM_WORLD );
   return position;
 }
 
 static void store_position(int position){
+  if (o.rank != 0){
+    return;
+  }
   FILE * f = fopen(o.run_info_file, "w");
   if(! f){
     printf("[ERROR] Could not open %s for saving data\n", o.run_info_file);
