@@ -1005,7 +1005,7 @@ int main(int argc, char ** argv){
     MPI_Abort(MPI_COMM_WORLD, 1);
   }
 
-  int current_index;
+  int current_index = 0;
 
   if ( (o.phase_cleanup || o.phase_benchmark) && ! o.phase_precreate ){
     current_index = return_position();
