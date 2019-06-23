@@ -1,17 +1,17 @@
-// This file is part of MD-REAL-IO.
+// This file is part of MD-Workbench.
 //
-// MD-REAL-IO is free software: you can redistribute it and/or modify
+// MD-Workbench is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// MD-REAL-IO is distributed in the hope that it will be useful,
+// MD-Workbench is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU Lesser General Public License
-// along with MD-REAL-IO.  If not, see <http://www.gnu.org/licenses/>.
+// along with MD-Workbench.  If not, see <http://www.gnu.org/licenses/>.
 //
 // Author: Julian Kunkel
 
@@ -1018,7 +1018,7 @@ int main(int argc, char ** argv){
 
   size_t total_obj_count = o.dset_count * (size_t) (o.num * o.iterations + o.precreate) * o.size;
   if (o.rank == 0 && ! o.quiet_output){
-    printf("MD-REAL-IO total objects: %zu workingset size: %.3f MiB (version: %s) time: ", total_obj_count, ((double) o.size) * o.dset_count * o.precreate * o.file_size / 1024.0 / 1024.0,  VERSION);
+    printf("MD-Workbench total objects: %zu workingset size: %.3f MiB (version: %s) time: ", total_obj_count, ((double) o.size) * o.dset_count * o.precreate * o.file_size / 1024.0 / 1024.0,  VERSION);
     printTime();
     if(o.num > o.precreate){
       printf("WARNING: num > precreate, this may cause the situation that no objects are available to read\n");
